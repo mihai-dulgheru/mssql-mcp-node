@@ -3,7 +3,7 @@ const { getDbConfig } = require("../config/dbConfig");
 
 /**
  * Lists available SQL Server tools.
- * @returns {Array<Object>} Array of tool objects.
+ * @returns {Array<Object>} An array of tool objects.
  */
 function listTools() {
   return [
@@ -52,7 +52,6 @@ async function callTool(name, argumentsObj) {
   let pool;
   try {
     pool = await sql.connect(config);
-
     if (name === "execute_sql") {
       const query = argumentsObj.query;
       if (!query) {
@@ -101,9 +100,7 @@ async function callTool(name, argumentsObj) {
       csvRows.push("COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH");
       result.recordset.forEach((row) => {
         csvRows.push(
-          `${row.COLUMN_NAME},${row.DATA_TYPE},${
-            row.CHARACTER_MAXIMUM_LENGTH || ""
-          }`
+          `${row.COLUMN_NAME},${row.DATA_TYPE},${row.CHARACTER_MAXIMUM_LENGTH || ""}`
         );
       });
       return [{ type: "text", text: csvRows.join("\n") }];

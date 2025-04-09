@@ -43,7 +43,7 @@ app.get("/resource", async (req, res) => {
 
 /**
  * GET /tools
- * List available MSSQL tools.
+ * Lists available MSSQL tools.
  */
 app.get("/tools", (req, res) => {
   try {
@@ -57,8 +57,8 @@ app.get("/tools", (req, res) => {
 
 /**
  * POST /call-tool
- * Call a tool.
- * Expects a JSON body with fields: "name" (string) and "arguments" (object).
+ * Executes a tool.
+ * Expects a JSON body with "name" (string) and "arguments" (object).
  */
 app.post("/call-tool", async (req, res) => {
   const { name, arguments: toolArgs } = req.body;

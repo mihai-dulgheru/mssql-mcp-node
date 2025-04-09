@@ -2,8 +2,8 @@ require("dotenv").config();
 
 /**
  * Returns the database configuration.
- * @returns {Object} The database configuration.
- * @throws {Error} If a required configuration is missing.
+ * @returns {Object} The MSSQL connection configuration.
+ * @throws {Error} If required configuration variables are missing.
  */
 function getDbConfig() {
   const server = process.env.MSSQL_SERVER || "localhost";

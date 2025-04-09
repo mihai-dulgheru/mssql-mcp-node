@@ -3,7 +3,7 @@ const { getDbConfig } = require("../config/dbConfig");
 
 /**
  * Lists available tables (resources) from the SQL Server database.
- * @returns {Promise<Array<Object>>} Array of resource objects.
+ * @returns {Promise<Array<Object>>} An array of resource objects.
  */
 async function listResources() {
   const config = getDbConfig();
@@ -34,8 +34,8 @@ async function listResources() {
 
 /**
  * Reads data from a specified table.
- * @param {string} uri - The resource URI in the format "mssql://<table>/data".
- * @returns {Promise<string>} The CSV formatted data including headers.
+ * @param {string} uri - The resource URI (format: "mssql://<table>/data").
+ * @returns {Promise<string>} CSV-formatted data including headers.
  * @throws {Error} If the URI is invalid or the query fails.
  */
 async function readResource(uri) {
