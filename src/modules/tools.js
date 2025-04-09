@@ -38,10 +38,9 @@ function listTools() {
   ];
 }
 
-// TODO: Use READ ONLY TRANSACTION for executeSql and getTableSchema
-
 /**
  * Executes an SQL query and formats the results.
+ * Uses a READ ONLY transaction for safe execution.
  * @param {string} query - The SQL query to execute.
  * @returns {Promise<Object>} Response object with content array and isError flag.
  */
@@ -52,34 +51,44 @@ async function executeSql(query) {
 
   const config = getDbConfig();
   let pool;
+  let transaction;
   try {
     pool = await sql.connect(config);
-    const upperQuery = query.trim().toUpperCase();
 
-    if (
-      upperQuery.startsWith("SELECT") &&
-      upperQuery.includes("INFORMATION_SCHEMA.TABLES")
-    ) {
-      const result = await pool.request().query(query);
-      const tables = result.recordset.map((row) => Object.values(row)[0]);
-      const resultData = {
-        tables,
-        database: config.database,
-      };
-      return {
-        content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }],
-        isError: false,
-      };
-    } else if (upperQuery.startsWith("SELECT")) {
-      const result = await pool.request().query(query);
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(result.recordset, null, 2) },
-        ],
-        isError: false,
-      };
+    const upperQuery = query.trim().toUpperCase();
+    if (upperQuery.startsWith("SELECT")) {
+      transaction = new sql.Transaction(pool);
+      await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+
+      const request = new sql.Request(transaction);
+
+      if (upperQuery.includes("INFORMATION_SCHEMA.TABLES")) {
+        const result = await request.query(query);
+        const tables = result.recordset.map((row) => Object.values(row)[0]);
+        const resultData = {
+          tables,
+          database: config.database,
+        };
+        await transaction.commit();
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(resultData, null, 2) },
+          ],
+          isError: false,
+        };
+      } else {
+        const result = await request.query(query);
+        await transaction.commit();
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(result.recordset, null, 2) },
+          ],
+          isError: false,
+        };
+      }
     } else {
-      const result = await pool.request().query(query);
+      const request = pool.request();
+      const result = await request.query(query);
       const resultData = {
         message: "Query executed successfully",
         rowsAffected: result.rowsAffected[0],
@@ -91,6 +100,13 @@ async function executeSql(query) {
     }
   } catch (error) {
     console.error(`Error executing SQL query: ${error.message}`);
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error(`Rollback error: ${rollbackError.message}`);
+      }
+    }
     return {
       content: [
         {
@@ -109,6 +125,7 @@ async function executeSql(query) {
 
 /**
  * Retrieves schema information for a specified table.
+ * Uses a READ ONLY transaction for safe execution.
  * @param {string} table - The name of the table to get schema for.
  * @returns {Promise<Object>} Response object with content array and isError flag.
  */
@@ -119,15 +136,22 @@ async function getTableSchema(table) {
 
   const config = getDbConfig();
   let pool;
+  let transaction;
   try {
     pool = await sql.connect(config);
+
+    transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+
+    const request = new sql.Request(transaction);
     const query = `
       SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
       FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_NAME = '${table}'
       ORDER BY ORDINAL_POSITION
     `;
-    const result = await pool.request().query(query);
+    const result = await request.query(query);
+    await transaction.commit();
 
     if (result.recordset.length === 0) {
       throw new Error(`Table '${table}' not found or has no columns`);
@@ -143,6 +167,13 @@ async function getTableSchema(table) {
     console.error(
       `Error retrieving schema for table '${table}': ${error.message}`
     );
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error(`Rollback error: ${rollbackError.message}`);
+      }
+    }
     return {
       content: [
         {
