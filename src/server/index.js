@@ -1,7 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const { listResources, readResource } = require("../modules/resources");
-const { listTools, callTool } = require("../modules/tools");
+const { listTools, executeSql, getTableSchema } = require("../modules/tools");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -56,22 +56,43 @@ app.get("/tools", (req, res) => {
 });
 
 /**
- * POST /call-tool
- * Executes a tool.
- * Expects a JSON body with "name" (string) and "arguments" (object).
+ * POST /execute-sql
+ * Executes an SQL query.
+ * Expects a JSON body with "query" property.
  */
-app.post("/call-tool", async (req, res) => {
-  const { name, arguments: toolArgs } = req.body;
-  if (!name || !toolArgs) {
-    return res
-      .status(400)
-      .json({ error: "Parameters 'name' and 'arguments' are required" });
+app.post("/execute-sql", async (req, res) => {
+  const { query } = req.body;
+  if (!query) {
+    return res.status(400).json({ error: "Parameter 'query' is required" });
   }
+
   try {
-    const result = await callTool(name, toolArgs);
+    const result = await executeSql(query);
     res.json(result);
   } catch (error) {
-    console.error(`Error calling tool ${name}:`, error.message);
+    console.error(`Error executing SQL query: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /get-table-schema
+ * Retrieves schema information for a specified table.
+ * Expects a JSON body with "table" property.
+ */
+app.post("/get-table-schema", async (req, res) => {
+  const { table } = req.body;
+  if (!table) {
+    return res.status(400).json({ error: "Parameter 'table' is required" });
+  }
+
+  try {
+    const result = await getTableSchema(table);
+    res.json(result);
+  } catch (error) {
+    console.error(
+      `Error retrieving schema for table '${table}': ${error.message}`
+    );
     res.status(500).json({ error: error.message });
   }
 });

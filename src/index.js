@@ -14,7 +14,7 @@ const {
 
 const packageJson = require("../package.json");
 const { listResources, readResource } = require("./modules/resources");
-const { listTools, callTool } = require("./modules/tools");
+const { listTools, executeSql, getTableSchema } = require("./modules/tools");
 
 const server = new Server(
   {
@@ -53,10 +53,17 @@ server.setRequestHandler(ListToolsRequestSchema, function () {
   return { tools: tools };
 });
 
-server.setRequestHandler(CallToolRequestSchema, function (request) {
+server.setRequestHandler(CallToolRequestSchema, async function (request) {
   const name = request.params.name;
   const toolArgs = request.params.arguments;
-  return callTool(name, toolArgs);
+
+  if (name === "execute_sql") {
+    return await executeSql(toolArgs.query);
+  } else if (name === "get_table_schema") {
+    return await getTableSchema(toolArgs.table);
+  } else {
+    throw new Error(`Unknown tool: ${name}`);
+  }
 });
 
 async function runMCPServer() {

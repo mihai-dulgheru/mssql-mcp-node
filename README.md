@@ -8,7 +8,7 @@ A Node.js implementation of the Model Context Protocol server for Microsoft SQL 
 - **SQL Query Execution**: Execute SQL queries against the connected database.
 - **Schema Information**: Retrieve metadata and schema details for database tables.
 - **MCP Protocol Support**: Communicates via STDIO using the Model Context Protocol SDK.
-- **Legacy HTTP API**: For local testing using Express.
+- **HTTP API**: For local testing using Express.
 
 ## Installation
 
@@ -78,9 +78,9 @@ This mode uses the Model Context Protocol (MCP) SDK with STDIO transport and is 
 
   This runs the MCP server from `src/index.js`.
 
-### 2. Legacy HTTP Mode (Express)
+### 2. HTTP Mode (Express)
 
-For local testing via HTTP, you can start the legacy Express server that exposes API endpoints.
+For local testing via HTTP, you can start the Express server that exposes API endpoints.
 
 - **Start Express Mode:**
 
@@ -96,7 +96,7 @@ For local testing via HTTP, you can start the legacy Express server that exposes
   npm run dev:express
   ```
 
-### API Endpoints (Legacy Express Mode)
+### API Endpoints (Express Mode)
 
 - **List Resources (Tables):**
 
@@ -172,20 +172,53 @@ For local testing via HTTP, you can start the legacy Express server that exposes
   ]
   ```
 
-- **Call a Tool:**
+- **Execute SQL Query:**
 
   ```http
-  POST /call-tool
+  POST /execute-sql
   ```
 
-  **Request Body for Executing SQL:**
+  **Request Body:**
 
   ```json
   {
-    "name": "execute_sql",
-    "arguments": {
-      "query": "SELECT TOP 10 * FROM YourTable"
+    "query": "SELECT TOP 10 * FROM YourTable"
+  }
+  ```
+
+  **Response Example for SELECT queries:**
+
+  ```json
+  [
+    {
+      "type": "text",
+      "text": "id,name,created_at\n1,Item1,2025-01-01\n2,Item2,2025-01-02"
     }
+  ]
+  ```
+
+  **Response Example for non-SELECT queries:**
+
+  ```json
+  [
+    {
+      "type": "text",
+      "text": "Query executed successfully. Rows affected: 1"
+    }
+  ]
+  ```
+
+- **Get Table Schema:**
+
+  ```http
+  POST /get-table-schema
+  ```
+
+  **Request Body:**
+
+  ```json
+  {
+    "table": "YourTable"
   }
   ```
 
@@ -195,7 +228,7 @@ For local testing via HTTP, you can start the legacy Express server that exposes
   [
     {
       "type": "text",
-      "text": "id,name,created_at\n1,Item1,2025-01-01\n2,Item2,2025-01-02"
+      "text": "COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH\nid,int,\nname,varchar,100\ncreated_at,datetime,"
     }
   ]
   ```
@@ -232,6 +265,46 @@ npx -y mssql-mcp-node
 
 with the specified environment variables injected, so the server connects to your SQL Server instance accordingly.
 
+## MCP Tools
+
+When using the MCP server through the Claude Desktop or VS Code integration, you can use the following tools:
+
+### execute_sql
+
+Execute an SQL query against the connected database.
+
+**Input:**
+
+```json
+{
+  "query": "SELECT TOP 10 * FROM YourTable"
+}
+```
+
+**Example usage in Claude Desktop:**
+
+```
+I'd like to see data from the YourTable table.
+```
+
+### get_table_schema
+
+Retrieve the schema information for a specific table.
+
+**Input:**
+
+```json
+{
+  "table": "YourTable"
+}
+```
+
+**Example usage in Claude Desktop:**
+
+```
+What columns are in the YourTable table?
+```
+
 ## Project Structure
 
 ```
@@ -248,23 +321,23 @@ mssql-mcp-node/
 ├── node_modules/
 ├── package-lock.json
 ├── package.json
-├── postman/              # Postman collection for API testing (optional)
+├── postman/              # Postman collection for API testing
 ├── README.md
 └── src/
     ├── config/
     │   └── dbConfig.js    # Database configuration module
-    ├── express.js         # Entry point for legacy Express server (HTTP mode)
+    ├── express.js         # Entry point for Express server (HTTP mode)
     ├── index.js           # MCP server entry point (STDIO mode via SDK)
     ├── modules/           # Core modules (resource and tool management)
     │   ├── resources.js   # Functions for listing resources and reading table data
-    │   └── tools.js       # Functions for listing and calling tools
+    │   └── tools.js       # Functions for SQL operations
     └── server/            # Express server setup (used by express.js)
         └── index.js       # Express server implementation
 ```
 
 ## Testing
 
-A Postman collection is provided in the `postman/` folder (if available) for testing the HTTP endpoints of the legacy Express server. To run the Express server in development mode with auto-reload, use:
+A Postman collection is provided in the `postman/` folder for testing the HTTP endpoints of the Express server. To run the Express server in development mode with auto-reload, use:
 
 ```bash
 npm run dev:express
