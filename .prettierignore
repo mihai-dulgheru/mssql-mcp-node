@@ -1,0 +1,9 @@
+# Ignore artifacts:
+build
+coverage
+
+# Ignore Visual Studio Code settings:
+.vscode
+
+# Ignore all Postman files:
+postman

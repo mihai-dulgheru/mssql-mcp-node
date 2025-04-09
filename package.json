@@ -1,0 +1,31 @@
+{
+  "name": "mssql-mcp-node",
+  "version": "1.0.0",
+  "description": "MSSQL MCP server implemented in Node.js",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "bin": {
+    "mssql-mcp-node": "./src/index.js"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "mssql": "^11.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "prettier": "3.5.3"
+  },
+  "keywords": [
+    "mssql",
+    "mcp",
+    "server",
+    "nodejs"
+  ],
+  "author": "Mihai-Nicolae Dulgheru <mihai.dulgheru18@gmail.com>",
+  "license": "ISC"
+}

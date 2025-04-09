@@ -1,0 +1,149 @@
+{
+	"info": {
+		"_postman_id": "2c5d9e43-fd30-45bb-a792-ca177c1d1ed8",
+		"name": "MSSQL MCP Node",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "26272599",
+		"_collection_link": "https://chess-coders.postman.co/workspace/Chess-Coders~7d29f585-3576-4888-838b-cda36c4382a5/collection/26272599-2c5d9e43-fd30-45bb-a792-ca177c1d1ed8?action=share&source=collection_link&creator=26272599"
+	},
+	"item": [
+		{
+			"name": "List resources",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/resources",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"resources"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Read resource",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/resources?uri=mssql://ContactPageSettings/data",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"resources"
+					],
+					"query": [
+						{
+							"key": "uri",
+							"value": "mssql://ContactPageSettings/data"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "List tools",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/tools",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"tools"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Call tool - execute_sql",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"name\": \"execute_sql\",\r\n    \"arguments\": {\r\n        \"query\": \"SELECT TOP (1000) * FROM Invoice\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/call-tool",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"call-tool"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Call tool - get_table_schema",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"name\": \"get_table_schema\",\r\n    \"arguments\": {\r\n        \"table\": \"InvoiceItem\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/call-tool",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"call-tool"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}
