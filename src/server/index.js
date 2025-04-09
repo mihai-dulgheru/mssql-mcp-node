@@ -68,7 +68,12 @@ app.post("/execute-sql", async (req, res) => {
 
   try {
     const result = await executeSql(query);
-    res.json(result);
+    if (result.isError) {
+      const error = JSON.parse(result.content[0].text);
+      return res.status(500).json({ error: error.error });
+    }
+    const parsedResult = JSON.parse(result.content[0].text);
+    res.json(parsedResult);
   } catch (error) {
     console.error(`Error executing SQL query: ${error.message}`);
     res.status(500).json({ error: error.message });
@@ -88,7 +93,12 @@ app.post("/get-table-schema", async (req, res) => {
 
   try {
     const result = await getTableSchema(table);
-    res.json(result);
+    if (result.isError) {
+      const error = JSON.parse(result.content[0].text);
+      return res.status(500).json({ error: error.error });
+    }
+    const parsedResult = JSON.parse(result.content[0].text);
+    res.json(parsedResult);
   } catch (error) {
     console.error(
       `Error retrieving schema for table '${table}': ${error.message}`

@@ -38,10 +38,12 @@ function listTools() {
   ];
 }
 
+// TODO: Use READ ONLY TRANSACTION for executeSql and getTableSchema
+
 /**
  * Executes an SQL query and formats the results.
  * @param {string} query - The SQL query to execute.
- * @returns {Promise<Array<Object>>} Array of text content objects.
+ * @returns {Promise<Object>} Response object with content array and isError flag.
  */
 async function executeSql(query) {
   if (!query) {
@@ -60,30 +62,44 @@ async function executeSql(query) {
     ) {
       const result = await pool.request().query(query);
       const tables = result.recordset.map((row) => Object.values(row)[0]);
-      const csvResult = `Tables_in_${config.database}\n${tables.join("\n")}`;
-      return [{ type: "text", text: csvResult }];
+      const resultData = {
+        tables,
+        database: config.database,
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }],
+        isError: false,
+      };
     } else if (upperQuery.startsWith("SELECT")) {
       const result = await pool.request().query(query);
-      const columns =
-        result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [];
-      const rows = result.recordset.map((row) =>
-        columns.map((col) => row[col]).join(",")
-      );
-      const csvResult = [columns.join(","), ...rows].join("\n");
-      return [{ type: "text", text: csvResult }];
+      return {
+        content: [
+          { type: "text", text: JSON.stringify(result.recordset, null, 2) },
+        ],
+        isError: false,
+      };
     } else {
       const result = await pool.request().query(query);
-      const affectedRows = result.rowsAffected[0];
-      return [
-        {
-          type: "text",
-          text: `Query executed successfully. Rows affected: ${affectedRows}`,
-        },
-      ];
+      const resultData = {
+        message: "Query executed successfully",
+        rowsAffected: result.rowsAffected[0],
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(resultData, null, 2) }],
+        isError: false,
+      };
     }
   } catch (error) {
     console.error(`Error executing SQL query: ${error.message}`);
-    throw new Error(`Error executing query: ${error.message}`);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: error.message }, null, 2),
+        },
+      ],
+      isError: true,
+    };
   } finally {
     if (pool) {
       await pool.close();
@@ -94,7 +110,7 @@ async function executeSql(query) {
 /**
  * Retrieves schema information for a specified table.
  * @param {string} table - The name of the table to get schema for.
- * @returns {Promise<Array<Object>>} Array of text content objects with schema info in CSV format.
+ * @returns {Promise<Object>} Response object with content array and isError flag.
  */
 async function getTableSchema(table) {
   if (!table) {
@@ -117,19 +133,25 @@ async function getTableSchema(table) {
       throw new Error(`Table '${table}' not found or has no columns`);
     }
 
-    const csvRows = [];
-    csvRows.push("COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH");
-    result.recordset.forEach((row) => {
-      csvRows.push(
-        `${row.COLUMN_NAME},${row.DATA_TYPE},${row.CHARACTER_MAXIMUM_LENGTH || ""}`
-      );
-    });
-    return [{ type: "text", text: csvRows.join("\n") }];
+    return {
+      content: [
+        { type: "text", text: JSON.stringify(result.recordset, null, 2) },
+      ],
+      isError: false,
+    };
   } catch (error) {
     console.error(
       `Error retrieving schema for table '${table}': ${error.message}`
     );
-    throw new Error(`Error retrieving table schema: ${error.message}`);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ error: error.message }, null, 2),
+        },
+      ],
+      isError: true,
+    };
   } finally {
     if (pool) {
       await pool.close();

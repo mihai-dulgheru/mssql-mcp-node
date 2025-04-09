@@ -31,7 +31,7 @@ const server = new Server(
 
 server.setRequestHandler(ListResourcesRequestSchema, async function () {
   const resources = await listResources();
-  return { resources: resources };
+  return { resources };
 });
 
 server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
@@ -40,7 +40,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
   return {
     contents: [
       {
-        uri: uri,
+        uri,
         mimeType: "text/plain",
         text: data,
       },
@@ -50,7 +50,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
 
 server.setRequestHandler(ListToolsRequestSchema, function () {
   const tools = listTools();
-  return { tools: tools };
+  return { tools };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async function (request) {
