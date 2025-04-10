@@ -1,4 +1,5 @@
 require("dotenv").config();
+const { dbConfigSchema, validate } = require("../validation");
 
 /**
  * Returns the database configuration.
@@ -39,7 +40,12 @@ function getDbConfig() {
     config.port = port;
   }
 
-  return config;
+  try {
+    return validate(dbConfigSchema, config);
+  } catch (error) {
+    console.error(`Database configuration validation failed: ${error.message}`);
+    throw error;
+  }
 }
 
 module.exports = { getDbConfig };

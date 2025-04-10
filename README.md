@@ -9,6 +9,7 @@ A Node.js implementation of the Model Context Protocol server for Microsoft SQL 
 - **Schema Information**: Retrieve metadata and schema details for database tables.
 - **MCP Protocol Support**: Communicates via STDIO using the Model Context Protocol SDK.
 - **HTTP API**: For local testing using Express.
+- **Schema Validation**: Uses Zod for robust input validation across all operations.
 
 ## Installation
 
@@ -352,6 +353,38 @@ Retrieve the schema information for a specific table.
 What columns are in the YourTable table?
 ```
 
+## Schema Validation
+
+This project uses [Zod](https://zod.dev/) for schema validation throughout the application to ensure data integrity and provide more robust error handling.
+
+### Implemented Schema Validations
+
+- **SQL Query Validation**: Validates that SQL queries are non-empty strings within a reasonable length limit.
+- **Table Name Validation**: Ensures table names follow proper naming conventions (alphanumeric characters and underscores only).
+- **Resource URI Validation**: Validates that resource URIs follow the expected format (`mssql://<table_name>/data`).
+- **Database Configuration Validation**: Ensures that all required database configuration parameters are provided and properly formatted.
+
+### Validation Module
+
+The validation module (`src/validation/index.js`) provides a centralized place for all schema definitions and a reusable validation function that handles error formatting and message generation.
+
+### Benefits of Zod Validation
+
+1. **Early Error Detection**: Catches input errors before they reach the database, preventing potential SQL errors.
+2. **Better Error Messages**: Provides meaningful error messages that clearly explain validation failures.
+3. **Type Safety**: Ensures data conforms to expected types and formats.
+4. **Security**: Helps prevent potential injection attacks by validating inputs before use.
+
+### Example Validation Flow
+
+When a user executes an SQL query:
+
+1. The input is validated against the `sqlQuerySchema` schema
+2. If validation passes, the query is executed against the database
+3. If validation fails, a formatted error message is returned to the client
+
+This validation flow applies to all input data throughout the application, including database configuration, table names, and resource URIs.
+
 ## Project Structure
 
 ```
@@ -378,8 +411,10 @@ mssql-mcp-node/
     ├── modules/           # Core modules (resource and tool management)
     │   ├── resources.js   # Functions for listing resources and reading table data
     │   └── tools.js       # Functions for SQL operations
-    └── server/            # Express server setup (used by express.js)
-        └── index.js       # Express server implementation
+    ├── server/            # Express server setup (used by express.js)
+    │   └── index.js       # Express server implementation
+    └── validation/        # Schema validation module using Zod
+        └── index.js       # Schema definitions and validation functions
 ```
 
 ## Testing
