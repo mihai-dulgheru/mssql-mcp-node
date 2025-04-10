@@ -18,8 +18,8 @@ async function listResources() {
     const resources = result.recordset.map((row) => ({
       uri: `mssql://${row.TABLE_NAME}/data`,
       name: `Table: ${row.TABLE_NAME}`,
-      mimeType: "text/plain",
       description: `Data in table: ${row.TABLE_NAME}`,
+      mimeType: "text/plain",
     }));
     return resources;
   } catch (error) {

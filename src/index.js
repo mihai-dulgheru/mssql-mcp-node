@@ -29,11 +29,13 @@ const server = new Server(
   }
 );
 
+// List available resources
 server.setRequestHandler(ListResourcesRequestSchema, async function () {
   const resources = await listResources();
   return { resources };
 });
 
+// Read resource contents
 server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
   const uri = request.params.uri;
   const data = await readResource(uri);
@@ -48,11 +50,13 @@ server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
   };
 });
 
+// Define available tools
 server.setRequestHandler(ListToolsRequestSchema, function () {
   const tools = listTools();
   return { tools };
 });
 
+// Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async function (request) {
   const name = request.params.name;
   const toolArgs = request.params.arguments;
@@ -70,6 +74,7 @@ async function runMCPServer() {
   const transport = new StdioServerTransport();
   try {
     await server.connect(transport);
+    console.log("Server is running...");
   } catch (err) {
     console.error("Server error: ", err);
     process.exit(1);

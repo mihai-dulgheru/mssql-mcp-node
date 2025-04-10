@@ -15,7 +15,7 @@ function getDbConfig() {
   const database = process.env.MSSQL_DATABASE;
   const encrypt = process.env.MSSQL_ENCRYPT === "true";
   const trustServerCertificate =
-    process.env.MSSQL_TRUST_SERVER_CERTIFICATE === "true";
+    process.env.MSSQL_TRUST_SERVER_CERTIFICATE === "false";
 
   if (!user || !password || !database) {
     console.error(

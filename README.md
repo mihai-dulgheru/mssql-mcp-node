@@ -235,20 +235,22 @@ For local testing via HTTP, you can start the Express server that exposes API en
 
 ## Integration with Claude Desktop or VS Code
 
-To integrate this MCP server with Claude Desktop or VS Code, add the following JSON snippet to your MCP configuration file (for example, in `mcpServers.json` or your workspace settings). Replace the placeholder values with your specific environment details:
+To integrate this MCP server with Claude Desktop or VS Code, add the following JSON snippet to your MCP configuration file. For Claude Desktop, this is typically in `mcpServers.json`, and for VS Code, in your workspace configuration (`.vscode/mcp.json`):
+
+### Claude Desktop
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "mssql-mcp-node": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
       "env": {
-        "MSSQL_SERVER": "REDACTED_SERVER_ADDRESS",
-        "MSSQL_PORT": "REDACTED_PORT",
-        "MSSQL_USER": "REDACTED_USER",
-        "MSSQL_PASSWORD": "REDACTED_PASSWORD",
-        "MSSQL_DATABASE": "REDACTED_DATABASE",
+        "MSSQL_SERVER": "your_server_name",
+        "MSSQL_PORT": "1433",
+        "MSSQL_USER": "your_username",
+        "MSSQL_PASSWORD": "your_password",
+        "MSSQL_DATABASE": "your_database",
         "MSSQL_ENCRYPT": "false",
         "MSSQL_TRUST_SERVER_CERTIFICATE": "true"
       }
@@ -257,13 +259,58 @@ To integrate this MCP server with Claude Desktop or VS Code, add the following J
 }
 ```
 
-This configuration will execute the server using:
+### VS Code
 
-```bash
-npx -y mssql-mcp-node
+For VS Code 1.86.0 and newer:
+
+```json
+{
+  "modelContextProtocolSupport.servers": {
+    "mssql-mcp-node": {
+      "command": "npx",
+      "args": ["-y", "mssql-mcp-node"],
+      "env": {
+        "MSSQL_SERVER": "your_server_name",
+        "MSSQL_PORT": "1433",
+        "MSSQL_USER": "your_username",
+        "MSSQL_PASSWORD": "your_password",
+        "MSSQL_DATABASE": "your_database",
+        "MSSQL_ENCRYPT": "false",
+        "MSSQL_TRUST_SERVER_CERTIFICATE": "true"
+      }
+    }
+  }
+}
 ```
 
-with the specified environment variables injected, so the server connects to your SQL Server instance accordingly.
+You can also install this package locally instead of using `npx`:
+
+```bash
+npm install --save-dev mssql-mcp-node
+```
+
+And then update your configuration:
+
+```json
+{
+  "modelContextProtocolSupport.servers": {
+    "mssql-mcp-node": {
+      "command": "node",
+      "args": ["./node_modules/.bin/mssql-mcp-node"],
+      "env": {
+        // environment variables as above
+      }
+    }
+  }
+}
+```
+
+This configuration will start the MCP server when needed, injecting your environment variables so it can connect to your SQL Server instance. For production use, consider enabling encryption:
+
+```json
+"MSSQL_ENCRYPT": "true",
+"MSSQL_TRUST_SERVER_CERTIFICATE": "false"
+```
 
 ## MCP Tools
 
