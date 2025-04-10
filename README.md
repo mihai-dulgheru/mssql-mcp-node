@@ -266,7 +266,7 @@ For VS Code 1.86.0 and newer:
 
 ```json
 {
-  "modelContextProtocolSupport.servers": {
+  "servers": {
     "mssql-mcp-node": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
@@ -294,7 +294,7 @@ And then update your configuration:
 
 ```json
 {
-  "modelContextProtocolSupport.servers": {
+  "servers": {
     "mssql-mcp-node": {
       "command": "node",
       "args": ["./node_modules/.bin/mssql-mcp-node"],
