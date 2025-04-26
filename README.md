@@ -1,5 +1,8 @@
 # MSSQL Model Context Protocol (MCP) Server
 
+![npm version](https://img.shields.io/npm/v/mssql-mcp-node)
+![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
+
 A Node.js implementation of the Model Context Protocol server for Microsoft SQL Server databases. This server provides a standardized API interface to interact with SQL Server databases, exposing database tables as resources and offering tools to execute SQL queries and retrieve schema information.
 
 ## Multi-Database Support

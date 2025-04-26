@@ -1,7 +1,15 @@
 {
   "name": "mssql-mcp-node",
   "version": "2.0.0",
-  "description": "MSSQL MCP server implemented in Node.js",
+  "description": "MCP server for Microsoft SQL Server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mihai-dulgheru/mssql-mcp-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mihai-dulgheru/mssql-mcp-node/issues"
+  },
+  "homepage": "https://github.com/mihai-dulgheru/mssql-mcp-node#readme",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
