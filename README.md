@@ -2,14 +2,75 @@
 
 A Node.js implementation of the Model Context Protocol server for Microsoft SQL Server databases. This server provides a standardized API interface to interact with SQL Server databases, exposing database tables as resources and offering tools to execute SQL queries and retrieve schema information.
 
+## Multi-Database Support
+
+This project now features automatic configuration detection that allows it to work in two modes:
+
+1. **Single-database mode** - Uses simple `MSSQL_*` variables to connect to one database
+2. **Multi-database mode** - Uses prefixed environment variables (`MSSQL_MAINDB_*`, `MSSQL_REPORTINGDB_*`, etc.) to connect to multiple databases
+
+The server auto-detects which mode is active at runtime and exposes the same REST/MCP interface in either case.
+
+## Environment Configuration
+
+### Single-Database Mode
+
+```ini
+# Single database configuration
+MSSQL_SERVER=your_sql_server_address
+MSSQL_PORT=1433
+MSSQL_USER=your_username
+MSSQL_PASSWORD=your_password
+MSSQL_DATABASE=your_database_name
+MSSQL_ENCRYPT=true
+MSSQL_TRUST_SERVER_CERTIFICATE=false
+```
+
+### Multi-Database Mode
+
+```ini
+# Main database
+MSSQL_MAINDB_SERVER=your_sql_server_address
+MSSQL_MAINDB_PORT=1433
+MSSQL_MAINDB_USER=your_username
+MSSQL_MAINDB_PASSWORD=your_password
+MSSQL_MAINDB_DATABASE=main_db_name
+MSSQL_MAINDB_ENCRYPT=true
+MSSQL_MAINDB_TRUST_SERVER_CERTIFICATE=false
+
+# Reporting database
+MSSQL_REPORTINGDB_SERVER=your_sql_server_address
+MSSQL_REPORTINGDB_PORT=1433
+MSSQL_REPORTINGDB_USER=your_username
+MSSQL_REPORTINGDB_PASSWORD=your_password
+MSSQL_REPORTINGDB_DATABASE=reporting_db_name
+MSSQL_REPORTINGDB_ENCRYPT=true
+MSSQL_REPORTINGDB_TRUST_SERVER_CERTIFICATE=false
+```
+
+> **Important:** Configure EITHER the Single-Database OR the Multi-Database variables in your `.env` file - not both. The server detects which mode to use based on the presence of specific variables.
+
+### Configuration and Behavior Matrix
+
+| Launch Config         | Environment Setup         | Behavior                                          |
+| --------------------- | ------------------------- | ------------------------------------------------- |
+| mssql-mcp-node-single | Single-Database variables | Operates in single-DB mode with one database      |
+| mssql-mcp-node-multi  | Multi-Database variables  | Operates in multi-DB mode with multiple databases |
+
+### Default dbKey Behavior
+
+In multi-database mode, when no `dbKey` is specified in the request, the server automatically uses the first database in your configuration (typically `maindb`). This makes API requests more concise while maintaining backward compatibility.
+
 ## Features
 
-- **Resource Management**: Access SQL Server tables as resources.
-- **SQL Query Execution**: Execute SQL queries against the connected database.
-- **Schema Information**: Retrieve metadata and schema details for database tables.
-- **MCP Protocol Support**: Communicates via STDIO using the Model Context Protocol SDK.
-- **HTTP API**: For local testing using Express.
-- **Schema Validation**: Uses Zod for robust input validation across all operations.
+- **Auto-detect Configuration Mode**: Automatically determines whether to use single or multi-database mode
+- **Resource Management**: Access SQL Server tables as resources
+- **SQL Query Execution**: Execute SQL queries against the connected database(s)
+- **Schema Information**: Retrieve metadata and schema details for database tables
+- **MCP Protocol Support**: Communicates via STDIO using the Model Context Protocol SDK
+- **HTTP API**: For local testing using Express
+- **Enhanced Validation**: Uses Zod for robust input validation with clear error messages
+- **Security Features**: Parameterized queries and SQL injection protection
 
 ## Installation
 
@@ -41,27 +102,16 @@ A Node.js implementation of the Model Context Protocol server for Microsoft SQL 
    cp .env.example .env
    ```
 
-   Then, update the `.env` file with your SQL Server connection details. For example:
-
-   ```
-   MSSQL_SERVER=your_sql_server_address
-   MSSQL_PORT=your_sql_port
-   MSSQL_USER=your_username
-   MSSQL_PASSWORD=your_password
-   MSSQL_DATABASE=your_database_name
-   MSSQL_ENCRYPT=false
-   MSSQL_TRUST_SERVER_CERTIFICATE=true
-   PORT=3000
-   ```
+   Then, update the `.env` file with your SQL Server connection details using EITHER single-database OR multi-database format (see above sections).
 
    > **Security Recommendations:**
    >
    > - **Development:**
-   >   - `MSSQL_ENCRYPT="false"`
-   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="true"`
+   >   - `MSSQL_ENCRYPT="false"` or `MSSQL_*DB_ENCRYPT="false"`
+   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="true"` or `MSSQL_*DB_TRUST_SERVER_CERTIFICATE="true"`
    > - **Production:**
-   >   - `MSSQL_ENCRYPT="true"` (to encrypt the connection)
-   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="false"` (to enforce certificate validation)
+   >   - `MSSQL_ENCRYPT="true"` or `MSSQL_*DB_ENCRYPT="true"` (to encrypt the connection)
+   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="false"` or `MSSQL_*DB_TRUST_SERVER_CERTIFICATE="false"` (to enforce certificate validation)
 
 ## Usage
 
@@ -102,7 +152,7 @@ For local testing via HTTP, you can start the Express server that exposes API en
 - **List Resources (Tables):**
 
   ```http
-  GET /resources
+  GET /resources?dbKey=maindb
   ```
 
   **Example Response:**
@@ -112,8 +162,8 @@ For local testing via HTTP, you can start the Express server that exposes API en
     {
       "uri": "mssql://YourTable/data",
       "name": "Table: YourTable",
-      "mimeType": "text/plain",
-      "description": "Data in table: YourTable"
+      "description": "Data in table: YourTable (DB: your_database)",
+      "mimeType": "text/plain"
     }
   ]
   ```
@@ -121,12 +171,13 @@ For local testing via HTTP, you can start the Express server that exposes API en
 - **Get Resource Data:**
 
   ```http
-  GET /resource?uri=mssql://YourTable/data
+  GET /resource?uri=mssql://YourTable/data&dbKey=maindb
   ```
 
   **Example Response:**
 
   ```
+  # Database: your_database
   id,name,created_at
   1,Item1,2025-01-01
   2,Item2,2025-01-02
@@ -144,13 +195,17 @@ For local testing via HTTP, you can start the Express server that exposes API en
   [
     {
       "name": "execute_sql",
-      "description": "Execute an SQL query on the SQL Server",
+      "description": "Execute an SQL query on the SQL Server (multi-database support)",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
             "description": "The SQL query to execute"
+          },
+          "dbKey": {
+            "type": "string",
+            "description": "The database key to use (e.g., 'maindb', 'reportingdb', etc.). Optional in single-db mode."
           }
         },
         "required": ["query"]
@@ -158,13 +213,17 @@ For local testing via HTTP, you can start the Express server that exposes API en
     },
     {
       "name": "get_table_schema",
-      "description": "Retrieve the schema of a specified table",
+      "description": "Retrieve the schema of a specified table (multi-database support)",
       "inputSchema": {
         "type": "object",
         "properties": {
           "table": {
             "type": "string",
             "description": "The name of the table"
+          },
+          "dbKey": {
+            "type": "string",
+            "description": "The database key to use (e.g., 'maindb', 'reportingdb', etc.). Optional in single-db mode."
           }
         },
         "required": ["table"]
@@ -183,30 +242,32 @@ For local testing via HTTP, you can start the Express server that exposes API en
 
   ```json
   {
-    "query": "SELECT TOP 10 * FROM YourTable"
+    "query": "SELECT TOP 10 * FROM YourTable",
+    "dbKey": "maindb" // Optional, defaults to first configured database
   }
   ```
 
   **Response Example for SELECT queries:**
 
   ```json
-  [
-    {
-      "type": "text",
-      "text": "id,name,created_at\n1,Item1,2025-01-01\n2,Item2,2025-01-02"
-    }
-  ]
+  {
+    "db": "your_database",
+    "rowCount": 2,
+    "recordset": [
+      { "id": 1, "name": "Item1", "created_at": "2025-01-01" },
+      { "id": 2, "name": "Item2", "created_at": "2025-01-02" }
+    ]
+  }
   ```
 
   **Response Example for non-SELECT queries:**
 
   ```json
-  [
-    {
-      "type": "text",
-      "text": "Query executed successfully. Rows affected: 1"
-    }
-  ]
+  {
+    "message": "Query executed successfully",
+    "db": "your_database",
+    "rowsAffected": 1
+  }
   ```
 
 - **Get Table Schema:**
@@ -219,31 +280,52 @@ For local testing via HTTP, you can start the Express server that exposes API en
 
   ```json
   {
-    "table": "YourTable"
+    "table": "YourTable",
+    "dbKey": "reportingdb" // Optional, defaults to first configured database
   }
   ```
 
   **Response Example:**
 
   ```json
-  [
-    {
-      "type": "text",
-      "text": "COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH\nid,int,\nname,varchar,100\ncreated_at,datetime,"
-    }
-  ]
+  {
+    "db": "reporting_db_name",
+    "table": "YourTable",
+    "columns": [
+      {
+        "COLUMN_NAME": "id",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null
+      },
+      {
+        "COLUMN_NAME": "name",
+        "DATA_TYPE": "varchar",
+        "CHARACTER_MAXIMUM_LENGTH": 100
+      },
+      {
+        "COLUMN_NAME": "created_at",
+        "DATA_TYPE": "datetime",
+        "CHARACTER_MAXIMUM_LENGTH": null
+      }
+    ],
+    "rowCount": 3
+  }
   ```
 
 ## Integration with Claude Desktop or VS Code
 
-To integrate this MCP server with Claude Desktop or VS Code, add the following JSON snippet to your MCP configuration file. For Claude Desktop, this is typically in `mcpServers.json`, and for VS Code, in your workspace configuration (`.vscode/mcp.json`):
+To integrate this MCP server with Claude Desktop or VS Code, add the following JSON snippet to your MCP configuration file. For Claude Desktop, this is typically in `mcpServers.json`, and for VS Code, in your workspace configuration (`.vscode/mcp.json`).
 
-### Claude Desktop
+### VS Code
+
+For VS Code 1.86.0 and newer, use either single or multi-database configuration:
+
+#### Single-Database Configuration
 
 ```json
 {
-  "mcpServers": {
-    "mssql-mcp-node": {
+  "servers": {
+    "mssql-mcp-node-single": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
       "env": {
@@ -252,32 +334,38 @@ To integrate this MCP server with Claude Desktop or VS Code, add the following J
         "MSSQL_USER": "your_username",
         "MSSQL_PASSWORD": "your_password",
         "MSSQL_DATABASE": "your_database",
-        "MSSQL_ENCRYPT": "false",
-        "MSSQL_TRUST_SERVER_CERTIFICATE": "true"
+        "MSSQL_ENCRYPT": "true",
+        "MSSQL_TRUST_SERVER_CERTIFICATE": "false"
       }
     }
   }
 }
 ```
 
-### VS Code
-
-For VS Code 1.86.0 and newer:
+#### Multi-Database Configuration
 
 ```json
 {
   "servers": {
-    "mssql-mcp-node": {
+    "mssql-mcp-node-multi": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
       "env": {
-        "MSSQL_SERVER": "your_server_name",
-        "MSSQL_PORT": "1433",
-        "MSSQL_USER": "your_username",
-        "MSSQL_PASSWORD": "your_password",
-        "MSSQL_DATABASE": "your_database",
-        "MSSQL_ENCRYPT": "false",
-        "MSSQL_TRUST_SERVER_CERTIFICATE": "true"
+        "MSSQL_MAINDB_SERVER": "your_server_name",
+        "MSSQL_MAINDB_PORT": "1433",
+        "MSSQL_MAINDB_USER": "your_username",
+        "MSSQL_MAINDB_PASSWORD": "your_password",
+        "MSSQL_MAINDB_DATABASE": "main_database",
+        "MSSQL_MAINDB_ENCRYPT": "true",
+        "MSSQL_MAINDB_TRUST_SERVER_CERTIFICATE": "false",
+
+        "MSSQL_REPORTINGDB_SERVER": "your_server_name",
+        "MSSQL_REPORTINGDB_PORT": "1433",
+        "MSSQL_REPORTINGDB_USER": "your_username",
+        "MSSQL_REPORTINGDB_PASSWORD": "your_password",
+        "MSSQL_REPORTINGDB_DATABASE": "reporting_database",
+        "MSSQL_REPORTINGDB_ENCRYPT": "true",
+        "MSSQL_REPORTINGDB_TRUST_SERVER_CERTIFICATE": "false"
       }
     }
   }
@@ -290,49 +378,27 @@ You can also install this package locally instead of using `npx`:
 npm install --save-dev mssql-mcp-node
 ```
 
-And then update your configuration:
-
-```json
-{
-  "servers": {
-    "mssql-mcp-node": {
-      "command": "node",
-      "args": ["./node_modules/.bin/mssql-mcp-node"],
-      "env": {
-        // environment variables as above
-      }
-    }
-  }
-}
-```
-
-This configuration will start the MCP server when needed, injecting your environment variables so it can connect to your SQL Server instance. For production use, consider enabling encryption:
-
-```json
-"MSSQL_ENCRYPT": "true",
-"MSSQL_TRUST_SERVER_CERTIFICATE": "false"
-```
-
 ## MCP Tools
 
 When using the MCP server through the Claude Desktop or VS Code integration, you can use the following tools:
 
 ### execute_sql
 
-Execute an SQL query against the connected database.
+Execute an SQL query against the connected database(s).
 
 **Input:**
 
 ```json
 {
-  "query": "SELECT TOP 10 * FROM YourTable"
+  "query": "SELECT TOP 10 * FROM YourTable",
+  "dbKey": "maindb" // Optional in both modes, defaults to first available database
 }
 ```
 
 **Example usage in Claude Desktop:**
 
 ```
-I'd like to see data from the YourTable table.
+I'd like to see data from the YourTable table in the main database.
 ```
 
 ### get_table_schema
@@ -343,14 +409,79 @@ Retrieve the schema information for a specific table.
 
 ```json
 {
-  "table": "YourTable"
+  "table": "YourTable",
+  "dbKey": "reportingdb" // Optional in both modes, defaults to first available database
 }
 ```
 
 **Example usage in Claude Desktop:**
 
 ```
-What columns are in the YourTable table?
+What columns are in the YourTable table in the reporting database?
+```
+
+### list_databases
+
+List all configured databases and their connection information.
+
+**Input:**
+
+```json
+{}
+
+
+// No parameters required
+```
+
+**Example usage in Claude Desktop:**
+
+```
+Show me all the available databases in the configuration.
+```
+
+## Testing
+
+A Postman collection is provided in the `postman/` folder for testing the HTTP endpoints of the Express server. Here are curl examples to test both single and multi-database configurations:
+
+### Testing with curl
+
+Test all four combinations (single/multi-database mode × maindb/reportingdb):
+
+#### Single-Database Mode (with one database only)
+
+```bash
+# List Resources
+curl -X GET "http://localhost:3000/resources"
+
+# Execute SQL Query
+curl -X POST "http://localhost:3000/execute-sql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT TOP 10 * FROM Users"}'
+
+# Get Table Schema
+curl -X POST "http://localhost:3000/get-table-schema" \
+  -H "Content-Type: application/json" \
+  -d '{"table": "Users"}'
+```
+
+#### Multi-Database Mode
+
+```bash
+# List Resources from maindb
+curl -X GET "http://localhost:3000/resources?dbKey=maindb"
+
+# List Resources from reportingdb
+curl -X GET "http://localhost:3000/resources?dbKey=reportingdb"
+
+# Execute SQL Query on maindb
+curl -X POST "http://localhost:3000/execute-sql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT TOP 10 * FROM Users", "dbKey": "maindb"}'
+
+# Execute SQL Query on reportingdb
+curl -X POST "http://localhost:3000/execute-sql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT TOP 10 * FROM SalesReport", "dbKey": "reportingdb"}'
 ```
 
 ## Schema Validation
@@ -363,27 +494,14 @@ This project uses [Zod](https://zod.dev/) for schema validation throughout the a
 - **Table Name Validation**: Ensures table names follow proper naming conventions (alphanumeric characters and underscores only).
 - **Resource URI Validation**: Validates that resource URIs follow the expected format (`mssql://<table_name>/data`).
 - **Database Configuration Validation**: Ensures that all required database configuration parameters are provided and properly formatted.
+- **Safety Checks**: SQL queries are validated against a list of potentially dangerous operations for additional security.
 
-### Validation Module
+### Security Enhancements
 
-The validation module (`src/validation/index.js`) provides a centralized place for all schema definitions and a reusable validation function that handles error formatting and message generation.
-
-### Benefits of Zod Validation
-
-1. **Early Error Detection**: Catches input errors before they reach the database, preventing potential SQL errors.
-2. **Better Error Messages**: Provides meaningful error messages that clearly explain validation failures.
-3. **Type Safety**: Ensures data conforms to expected types and formats.
-4. **Security**: Helps prevent potential injection attacks by validating inputs before use.
-
-### Example Validation Flow
-
-When a user executes an SQL query:
-
-1. The input is validated against the `sqlQuerySchema` schema
-2. If validation passes, the query is executed against the database
-3. If validation fails, a formatted error message is returned to the client
-
-This validation flow applies to all input data throughout the application, including database configuration, table names, and resource URIs.
+1. **SQL Injection Protection**: Uses parameterized queries wherever possible.
+2. **Query Safety Validation**: Checks for potentially dangerous SQL operations (DROP, TRUNCATE, etc.)
+3. **Enhanced Error Messages**: Provides detailed but safe error messages that don't expose sensitive details.
+4. **Configuration Validation**: Validates all configuration parameters before attempting to connect.
 
 ## Project Structure
 
@@ -391,7 +509,7 @@ This validation flow applies to all input data throughout the application, inclu
 mssql-mcp-node/
 ├── .editorconfig
 ├── .env                  # Environment variables file (not committed)
-├── .env.example          # Sample environment configuration
+├── .env.example          # Sample environment configuration (both modes)
 ├── .gitignore
 ├── .markdownlint.json
 ├── .prettierignore
@@ -405,7 +523,8 @@ mssql-mcp-node/
 ├── README.md
 └── src/
     ├── config/
-    │   └── dbConfig.js    # Database configuration module
+    │   ├── dbConfig.js    # Database connection handling module
+    │   └── index.js       # Configuration auto-detection module
     ├── express.js         # Entry point for Express server (HTTP mode)
     ├── index.js           # MCP server entry point (STDIO mode via SDK)
     ├── modules/           # Core modules (resource and tool management)
@@ -415,14 +534,6 @@ mssql-mcp-node/
     │   └── index.js       # Express server implementation
     └── validation/        # Schema validation module using Zod
         └── index.js       # Schema definitions and validation functions
-```
-
-## Testing
-
-A Postman collection is provided in the `postman/` folder for testing the HTTP endpoints of the Express server. To run the Express server in development mode with auto-reload, use:
-
-```bash
-npm run dev:express
 ```
 
 ## License

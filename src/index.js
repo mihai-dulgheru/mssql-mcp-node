@@ -14,7 +14,12 @@ const {
 
 const packageJson = require("../package.json");
 const { listResources, readResource } = require("./modules/resources");
-const { listTools, executeSql, getTableSchema } = require("./modules/tools");
+const {
+  listTools,
+  executeSql,
+  getTableSchema,
+  listDatabases,
+} = require("./modules/tools");
 
 const server = new Server(
   {
@@ -30,15 +35,19 @@ const server = new Server(
 );
 
 // List available resources
-server.setRequestHandler(ListResourcesRequestSchema, async function () {
-  const resources = await listResources();
+server.setRequestHandler(ListResourcesRequestSchema, async function (request) {
+  // Accept dbKey as an optional argument for multi-database support
+  const dbKey = request?.params?.arguments?.dbKey;
+  const resources = await listResources(dbKey);
   return { resources };
 });
 
 // Read resource contents
 server.setRequestHandler(ReadResourceRequestSchema, async function (request) {
   const uri = request.params.uri;
-  const data = await readResource(uri);
+  // Accept dbKey as an optional argument for multi-database support
+  const dbKey = request?.params?.arguments?.dbKey;
+  const data = await readResource(uri, dbKey);
   return {
     contents: [
       {
@@ -59,12 +68,14 @@ server.setRequestHandler(ListToolsRequestSchema, function () {
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async function (request) {
   const name = request.params.name;
-  const toolArgs = request.params.arguments;
+  const toolArgs = request.params.arguments || {};
 
   if (name === "execute_sql") {
-    return await executeSql(toolArgs.query);
+    return await executeSql(toolArgs.query, toolArgs.dbKey);
   } else if (name === "get_table_schema") {
-    return await getTableSchema(toolArgs.table);
+    return await getTableSchema(toolArgs.table, toolArgs.dbKey);
+  } else if (name === "list_databases") {
+    return await listDatabases();
   } else {
     throw new Error(`Unknown tool: ${name}`);
   }
@@ -74,7 +85,6 @@ async function runMCPServer() {
   const transport = new StdioServerTransport();
   try {
     await server.connect(transport);
-    console.log("Server is running...");
   } catch (err) {
     console.error("Server error: ", err);
     process.exit(1);

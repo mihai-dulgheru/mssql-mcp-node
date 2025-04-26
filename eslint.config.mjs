@@ -16,6 +16,17 @@ export default defineConfig([
   {
     rules: {
       "no-undef": "off",
+      "no-unused-vars": [
+        "error",
+        {
+          vars: "all",
+          args: "after-used",
+          caughtErrors: "all",
+          ignoreRestSiblings: false,
+          reportUsedIgnorePattern: false,
+          argsIgnorePattern: "^_",
+        },
+      ],
     },
   },
 ]);

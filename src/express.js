@@ -1,9 +1,7 @@
+require("dotenv").config();
 const { startServer } = require("./server");
-const dotenv = require("dotenv");
 
-// Load environment variables from .env file
-dotenv.config();
-
+// Start the server
 startServer();
 
 // Handle SIGINT (Ctrl+C) to gracefully shut down the server

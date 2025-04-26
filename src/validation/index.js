@@ -25,6 +25,30 @@ const tableNameSchema = z.object({
 });
 
 /**
+ * Schema for database key validation
+ */
+const dbKeySchema = z.object({
+  dbKey: z
+    .string()
+    .min(1, { message: "Database key cannot be empty" })
+    .max(50, { message: "Database key is too long" })
+    .regex(/^[a-zA-Z0-9_]+$/, {
+      message:
+        "Database key can only contain alphanumeric characters and underscores",
+    }),
+});
+
+/**
+ * Schema for both dbKey and table validation
+ */
+const dbKeyTableSchema = dbKeySchema.merge(tableNameSchema);
+
+/**
+ * Schema for both dbKey and query validation
+ */
+const dbKeyQuerySchema = dbKeySchema.merge(sqlQuerySchema);
+
+/**
  * Schema for database resource URI validation
  */
 const resourceUriSchema = z.string().regex(/^mssql:\/\/[a-zA-Z0-9_]+\/data$/, {
@@ -70,6 +94,9 @@ function validate(schema, data) {
 module.exports = {
   sqlQuerySchema,
   tableNameSchema,
+  dbKeySchema,
+  dbKeyTableSchema,
+  dbKeyQuerySchema,
   resourceUriSchema,
   dbConfigSchema,
   validate,

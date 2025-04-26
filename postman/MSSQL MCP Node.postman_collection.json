@@ -1,125 +1,295 @@
 {
 	"info": {
-		"_postman_id": "8c3249b4-2c25-463c-b5cb-60b171221c8a",
+		"_postman_id": "41301555-1e87-4b73-b69a-8a08f450a2e2",
 		"name": "MSSQL MCP Node",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "26272599",
-		"_collection_link": "https://chess-coders.postman.co/workspace/Chess-Coders~7d29f585-3576-4888-838b-cda36c4382a5/collection/26272599-8c3249b4-2c25-463c-b5cb-60b171221c8a?action=share&source=collection_link&creator=26272599"
+		"_collection_link": "https://chess-coders.postman.co/workspace/Chess-Coders~7d29f585-3576-4888-838b-cda36c4382a5/collection/26272599-41301555-1e87-4b73-b69a-8a08f450a2e2?action=share&source=collection_link&creator=26272599"
 	},
 	"item": [
 		{
-			"name": "List resources",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{baseUrl}}/resources",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"resources"
-					]
+			"name": "Single Database",
+			"item": [
+				{
+					"name": "List resources",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/resources",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"resources"
+							]
+						},
+						"description": "Lists available database tables as resources."
+					},
+					"response": []
 				},
-				"description": "Lists available database tables as resources."
-			},
-			"response": []
+				{
+					"name": "Read resource",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/resource?uri=mssql://Users/data",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"resource"
+							],
+							"query": [
+								{
+									"key": "uri",
+									"value": "mssql://Users/data"
+								}
+							]
+						},
+						"description": "Returns CSV data from a specific table identified by its URI."
+					},
+					"response": []
+				},
+				{
+					"name": "List tools",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tools",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"tools"
+							]
+						},
+						"description": "Lists available tools for SQL operations."
+					},
+					"response": []
+				},
+				{
+					"name": "Lists databases",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/databases",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"databases"
+							]
+						},
+						"description": "Lists available tools for SQL operations."
+					},
+					"response": []
+				},
+				{
+					"name": "Execute SQL query",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"query\": \"SELECT TOP (1000) * FROM Users\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/execute-sql",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"execute-sql"
+							]
+						},
+						"description": "Execute an SQL query on the database and get results in CSV format. For SELECT queries, returns data in CSV format. For other operations, returns the number of rows affected."
+					},
+					"response": []
+				},
+				{
+					"name": "Get table schema",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"table\": \"Users\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/get-table-schema",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"get-table-schema"
+							]
+						},
+						"description": "Get schema information for a specific table including column names, data types, and character length limits."
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Read resource",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{baseUrl}}/resource?uri=mssql://ContactPageSettings/data",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"resource"
-					],
-					"query": [
-						{
-							"key": "uri",
-							"value": "mssql://ContactPageSettings/data"
-						}
-					]
+			"name": "Multi Database",
+			"item": [
+				{
+					"name": "List resources",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/resources?dbKey={{dbKey}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"resources"
+							],
+							"query": [
+								{
+									"key": "dbKey",
+									"value": "{{dbKey}}"
+								}
+							]
+						},
+						"description": "Lists available database tables as resources."
+					},
+					"response": []
 				},
-				"description": "Returns CSV data from a specific table identified by its URI."
-			},
-			"response": []
-		},
-		{
-			"name": "List tools",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{baseUrl}}/tools",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"tools"
-					]
+				{
+					"name": "Read resource",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/resource?uri=mssql://Users/data&dbKey={{dbKey}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"resource"
+							],
+							"query": [
+								{
+									"key": "uri",
+									"value": "mssql://Users/data"
+								},
+								{
+									"key": "dbKey",
+									"value": "{{dbKey}}"
+								}
+							]
+						},
+						"description": "Returns CSV data from a specific table identified by its URI."
+					},
+					"response": []
 				},
-				"description": "Lists available tools for SQL operations."
-			},
-			"response": []
-		},
-		{
-			"name": "Execute SQL Query",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\r\n    \"query\": \"SELECT TOP (1000) * FROM Invoice\"\r\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+				{
+					"name": "List tools",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tools",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"tools"
+							]
+						},
+						"description": "Lists available tools for SQL operations."
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "{{baseUrl}}/execute-sql",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"execute-sql"
-					]
+				{
+					"name": "Lists databases",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/databases",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"databases"
+							]
+						},
+						"description": "Lists available tools for SQL operations."
+					},
+					"response": []
 				},
-				"description": "Execute an SQL query on the database and get results in CSV format. For SELECT queries, returns data in CSV format. For other operations, returns the number of rows affected."
-			},
-			"response": []
-		},
-		{
-			"name": "Get Table Schema",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\r\n    \"table\": \"InvoiceItem\"\r\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+				{
+					"name": "Execute SQL query",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"query\": \"SELECT TOP (1000) * FROM Users\",\r\n    \"dbKey\": \"{{dbKey}}\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/execute-sql",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"execute-sql"
+							]
+						},
+						"description": "Execute an SQL query on the database and get results in CSV format. For SELECT queries, returns data in CSV format. For other operations, returns the number of rows affected."
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "{{baseUrl}}/get-table-schema",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"get-table-schema"
-					]
-				},
-				"description": "Get schema information for a specific table including column names, data types, and character length limits."
-			},
-			"response": []
+				{
+					"name": "Get table schema",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n    \"table\": \"Users\",\r\n    \"dbKey\": \"{{dbKey}}\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/get-table-schema",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"get-table-schema"
+							]
+						},
+						"description": "Get schema information for a specific table including column names, data types, and character length limits."
+					},
+					"response": []
+				}
+			]
 		}
 	],
 	"event": [
@@ -149,6 +319,11 @@
 			"key": "baseUrl",
 			"value": "http://localhost:3000",
 			"type": "string"
+		},
+		{
+			"key": "dbKey",
+			"value": "maindb",
+			"type": "default"
 		}
 	]
 }
