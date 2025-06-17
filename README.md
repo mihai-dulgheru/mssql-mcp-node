@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/mihai-dulgheru-mssql-mcp-node-badge.png)](https://mseep.ai/app/mihai-dulgheru-mssql-mcp-node)
+
 # MSSQL Model Context Protocol (MCP) Server
 
 ![npm version](https://img.shields.io/npm/v/mssql-mcp-node)
