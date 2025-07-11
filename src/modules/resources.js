@@ -101,7 +101,9 @@ async function readResource(uri, dbKey) {
         const rowValues = columns.map((col) => {
           // Handle special characters and null values for CSV format
           const value = row[col];
-          if (value === null || value === undefined) return "";
+          if (value === null || value === undefined) {
+            return "";
+          }
           if (
             typeof value === "string" &&
             (value.includes(",") || value.includes('"') || value.includes("\n"))

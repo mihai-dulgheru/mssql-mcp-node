@@ -10,9 +10,9 @@ A Node.js implementation of the Model Context Protocol server for Microsoft SQL 
 This project now features automatic configuration detection that allows it to work in two modes:
 
 1. **Single-database mode** - Uses simple `MSSQL_*` variables to connect to one database
-2. **Multi-database mode** - Uses prefixed environment variables (`MSSQL_MAINDB_*`, `MSSQL_REPORTINGDB_*`, etc.) to connect to multiple databases
+2. **Multi-database mode** - Uses prefixed environment variables (`MSSQL_<DBNAME>_*`) to connect to multiple databases with custom names
 
-The server auto-detects which mode is active at runtime and exposes the same REST/MCP interface in either case.
+The server auto-detects which mode is active at runtime and exposes the same REST/MCP interface in either case. In multi-database mode, you can use any database names you prefer (e.g., `MSSQL_MAINDB_*`, `MSSQL_REPORTINGDB_*`, `MSSQL_ANALYTICS_*`, `MSSQL_CUSTOMERS_*`, etc.).
 
 ## Environment Configuration
 
@@ -51,6 +51,32 @@ MSSQL_REPORTINGDB_ENCRYPT=true
 MSSQL_REPORTINGDB_TRUST_SERVER_CERTIFICATE=false
 ```
 
+#### Custom Database Names Example
+
+You can use any database names you prefer by following the pattern `MSSQL_<YOUR_CUSTOM_NAME>_*`:
+
+```ini
+# Analytics database
+MSSQL_ANALYTICS_SERVER=analytics.example.com
+MSSQL_ANALYTICS_PORT=1433
+MSSQL_ANALYTICS_USER=analytics_user
+MSSQL_ANALYTICS_PASSWORD=analytics_password
+MSSQL_ANALYTICS_DATABASE=analytics_data
+MSSQL_ANALYTICS_ENCRYPT=true
+MSSQL_ANALYTICS_TRUST_SERVER_CERTIFICATE=false
+
+# Customer database
+MSSQL_CUSTOMERS_SERVER=customers.example.com
+MSSQL_CUSTOMERS_PORT=1433
+MSSQL_CUSTOMERS_USER=customer_user
+MSSQL_CUSTOMERS_PASSWORD=customer_password
+MSSQL_CUSTOMERS_DATABASE=customer_data
+MSSQL_CUSTOMERS_ENCRYPT=true
+MSSQL_CUSTOMERS_TRUST_SERVER_CERTIFICATE=false
+```
+
+The server will automatically detect any database configurations following this pattern and make them available with lowercase keys (e.g., `analytics`, `customers`).
+
 > **Important:** Configure EITHER the Single-Database OR the Multi-Database variables in your `.env` file - not both. The server detects which mode to use based on the presence of specific variables.
 
 ### Configuration and Behavior Matrix
@@ -62,7 +88,7 @@ MSSQL_REPORTINGDB_TRUST_SERVER_CERTIFICATE=false
 
 ### Default dbKey Behavior
 
-In multi-database mode, when no `dbKey` is specified in the request, the server automatically uses the first database in your configuration (typically `maindb`). This makes API requests more concise while maintaining backward compatibility.
+In multi-database mode, when no `dbKey` is specified in the request, the server automatically uses the first database in your configuration alphabetically. This makes API requests more concise while maintaining backward compatibility.
 
 ## Features
 

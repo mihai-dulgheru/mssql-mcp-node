@@ -56,9 +56,11 @@ function validate(schema, data) {
  * Returns appropriate configuration mode string
  */
 function detectConfigMode() {
-  const hasMultiDb = Boolean(
-    process.env.MSSQL_MAINDB_SERVER && process.env.MSSQL_REPORTINGDB_SERVER
+  // Check for multi-database mode by looking for any MSSQL_*_DATABASE environment variables
+  const hasMultiDb = Object.keys(process.env).some((envKey) =>
+    envKey.match(/^MSSQL_(.+)_DATABASE$/)
   );
+
   const hasSingleDb = Boolean(
     process.env.MSSQL_SERVER || process.env.MSSQL_DATABASE
   );
@@ -163,7 +165,9 @@ function loadMultiDatabaseConfigs() {
             },
           };
 
-          if (port) config.port = port;
+          if (port) {
+            config.port = port;
+          }
           dbConfigs[dbKey] = validate(dbConnectionSchema, config);
         } else {
           errors.push(
