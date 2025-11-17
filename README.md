@@ -189,9 +189,9 @@ For local testing via HTTP, you can start the Express server that exposes API en
   ```json
   [
     {
-      "uri": "mssql://YourTable/data",
-      "name": "Table: YourTable",
-      "description": "Data in table: YourTable (DB: your_database)",
+      "uri": "mssql://dbo.YourTable/data",
+      "name": "Table: dbo.YourTable",
+      "description": "Data in table: dbo.YourTable (DB: your_database)",
       "mimeType": "text/plain"
     }
   ]
@@ -200,7 +200,7 @@ For local testing via HTTP, you can start the Express server that exposes API en
 - **Get Resource Data:**
 
   ```http
-  GET /resource?uri=mssql://YourTable/data&dbKey=maindb
+  GET /resource?uri=mssql://dbo.YourTable/data&dbKey=maindb
   ```
 
   **Example Response:**
@@ -248,7 +248,7 @@ For local testing via HTTP, you can start the Express server that exposes API en
         "properties": {
           "table": {
             "type": "string",
-            "description": "The name of the table"
+            "description": "The name of the table (supports schema.table format, e.g., 'dbo.YourTable')"
           },
           "dbKey": {
             "type": "string",
@@ -309,8 +309,17 @@ For local testing via HTTP, you can start the Express server that exposes API en
 
   ```json
   {
-    "table": "YourTable",
+    "table": "dbo.YourTable",
     "dbKey": "reportingdb" // Optional, defaults to first configured database
+  }
+  ```
+
+  For tables in the default schema, you can omit the schema prefix:
+
+  ```json
+  {
+    "table": "YourTable",
+    "dbKey": "reportingdb"
   }
   ```
 
@@ -521,7 +530,7 @@ This project uses [Zod](https://zod.dev/) for schema validation throughout the a
 
 - **SQL Query Validation**: Validates that SQL queries are non-empty strings within a reasonable length limit.
 - **Table Name Validation**: Ensures table names follow proper naming conventions (alphanumeric characters and underscores only).
-- **Resource URI Validation**: Validates that resource URIs follow the expected format (`mssql://<table_name>/data`).
+- **Resource URI Validation**: Validates that resource URIs follow the expected format (`mssql://<table_name>/data` or `mssql://<schema>.<table_name>/data`).
 - **Database Configuration Validation**: Ensures that all required database configuration parameters are provided and properly formatted.
 - **Safety Checks**: SQL queries are validated against a list of potentially dangerous operations for additional security.
 

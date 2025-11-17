@@ -1,6 +1,7 @@
 const sql = require("mssql");
-const { getDbConfig } = require("../config/dbConfig");
+const { getDbConfig, getDefaultDbKey } = require("../config/dbConfig");
 const { resourceUriSchema, dbKeySchema, validate } = require("../validation");
+const { updateConnectionStatus } = require("../config");
 
 /**
  * Lists available tables (resources) from the SQL Server database.
@@ -16,24 +17,30 @@ async function listResources(dbKey) {
     }
 
     const config = getDbConfig(dbKey);
+    const actualDbKey = dbKey || getDefaultDbKey();
     let pool;
     try {
-      pool = await sql.connect(config);
+      pool = new sql.ConnectionPool(config);
+      await pool.connect();
+      updateConnectionStatus(actualDbKey, "connected");
       const result = await pool.request().query(`
-        SELECT TABLE_NAME
+        SELECT TABLE_SCHEMA, TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_TYPE = 'BASE TABLE'
       `);
 
       // Include database name in resource description for better clarity
       const resources = result.recordset.map((row) => ({
-        uri: `mssql://${row.TABLE_NAME}/data`,
-        name: `Table: ${row.TABLE_NAME}`,
-        description: `Data in table: ${row.TABLE_NAME} (DB: ${config.database})`,
+        uri: `mssql://${row.TABLE_SCHEMA}.${row.TABLE_NAME}/data`,
+        name: `Table: ${row.TABLE_SCHEMA}.${row.TABLE_NAME}`,
+        description: `Data in table: ${row.TABLE_SCHEMA}.${row.TABLE_NAME} (DB: ${config.database})`,
         mimeType: "text/plain",
       }));
       return resources;
     } catch (error) {
+      const actualDbKey =
+        dbKey || Object.keys(require("../config/dbConfig").dbConfigs)[0];
+      updateConnectionStatus(actualDbKey, "error", error);
       console.error(`Failed to list resources: ${error.message}`);
       return [];
     } finally {
@@ -50,7 +57,7 @@ async function listResources(dbKey) {
 /**
  * Reads data from a specified table.
  * Accepts optional dbKey for multi-database support.
- * @param {string} uri - The resource URI (format: "mssql://<table>/data").
+ * @param {string} uri - The resource URI (format: "mssql://<table>/data" or "mssql://<schema>.<table>/data").
  * @param {string} [dbKey] - Optional database key.
  * @returns {Promise<string>} CSV-formatted data including headers.
  * @throws {Error} If the URI is invalid or the query fails.
@@ -70,20 +77,39 @@ async function readResource(uri, dbKey) {
     }
 
     const parts = validUri.slice(8).split("/");
-    const table = parts[0];
+    const tablePart = parts[0];
+    const actualDbKey = dbKey || getDefaultDbKey();
     let pool;
     try {
-      pool = await sql.connect(config);
+      pool = new sql.ConnectionPool(config);
+      await pool.connect();
+      updateConnectionStatus(actualDbKey, "connected");
 
       // Using a transaction to ensure consistent read
       const transaction = new sql.Transaction(pool);
       await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
       const queryRequest = new sql.Request(transaction);
-      queryRequest.input("tableName", sql.VarChar, table);
+      // If schema is included (schema.table), split and escape both parts.
+      let escapedTableName;
+      if (tablePart.includes(".")) {
+        const dotIndex = tablePart.indexOf(".");
+        const schema = tablePart.substring(0, dotIndex);
+        const table = tablePart.substring(dotIndex + 1);
 
-      // Safely construct the query using escaped table name
-      const escapedTableName = `[${table.replace(/]/g, "]]")}]`;
+        if (!schema || !table || table.includes(".")) {
+          throw new Error(
+            `Invalid table format: '${tablePart}'. Expected 'schema.table' format.`
+          );
+        }
+
+        const escSchema = `[${schema.replace(/]/g, "]]")}]`;
+        const escTable = `[${table.replace(/]/g, "]]")}]`;
+        escapedTableName = `${escSchema}.${escTable}`;
+      } else {
+        const escTable = `[${tablePart.replace(/]/g, "]]")}]`;
+        escapedTableName = escTable;
+      }
       const query = `SELECT TOP 100 * FROM ${escapedTableName}`;
 
       const result = await queryRequest.query(query);
@@ -116,6 +142,8 @@ async function readResource(uri, dbKey) {
       });
       return csvRows.join("\n");
     } catch (error) {
+      const actualDbKey = dbKey || getDefaultDbKey();
+      updateConnectionStatus(actualDbKey, "error", error);
       console.error(
         `Database error reading resource ${validUri}: ${error.message}`
       );

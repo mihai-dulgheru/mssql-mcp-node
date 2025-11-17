@@ -1,6 +1,7 @@
 const sql = require("mssql");
 const {
   getDbConfig,
+  getDefaultDbKey,
   dbConfigs,
   getConnectionStatus,
 } = require("../config/dbConfig");
@@ -9,6 +10,7 @@ const {
   dbKeyQuerySchema,
   validate,
 } = require("../validation");
+const { updateConnectionStatus } = require("../config");
 
 /**
  * Lists available SQL Server tools.
@@ -45,7 +47,8 @@ function listTools() {
         properties: {
           table: {
             type: "string",
-            description: "The name of the table",
+            description:
+              "The name of the table (supports schema.table format, e.g., 'dbo.YourTable')",
           },
           dbKey: {
             type: "string",
@@ -159,10 +162,13 @@ async function executeSql(query, dbKey) {
     }
 
     const config = getDbConfig(dbKey);
+    const actualDbKey = dbKey || getDefaultDbKey();
     let pool;
     let transaction;
     try {
-      pool = await sql.connect(config);
+      pool = new sql.ConnectionPool(config);
+      await pool.connect();
+      updateConnectionStatus(actualDbKey, "connected");
 
       const upperQuery = validQuery.trim().toUpperCase();
       if (upperQuery.startsWith("SELECT")) {
@@ -213,6 +219,8 @@ async function executeSql(query, dbKey) {
         };
       }
     } catch (error) {
+      const actualDbKey = dbKey || getDefaultDbKey();
+      updateConnectionStatus(actualDbKey, "error", error);
       console.error(`Error executing SQL query: ${error.message}`);
       if (transaction) {
         try {
@@ -279,25 +287,54 @@ async function getTableSchema(table, dbKey) {
     const { table: validTable } = validSchema;
 
     const config = getDbConfig(dbKey);
+    const actualDbKey = dbKey || getDefaultDbKey();
     let pool;
     let transaction;
     try {
-      pool = await sql.connect(config);
+      pool = new sql.ConnectionPool(config);
+      await pool.connect();
+      updateConnectionStatus(actualDbKey, "connected");
 
       transaction = new sql.Transaction(pool);
       await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
       // Use parameterized query to prevent SQL injection
       const request = new sql.Request(transaction);
-      const query = `
-        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = @tableName
-        ORDER BY ORDINAL_POSITION
-      `;
 
-      // Add parameter
-      request.input("tableName", sql.VarChar, validTable);
+      // Parse schema.table if present
+      let schema = null;
+      let tableName = validTable;
+      if (validTable.includes(".")) {
+        const dotIndex = validTable.indexOf(".");
+        schema = validTable.substring(0, dotIndex);
+        tableName = validTable.substring(dotIndex + 1);
+
+        if (!schema || !tableName || tableName.includes(".")) {
+          throw new Error(
+            `Invalid table format: '${validTable}'. Expected 'schema.table' format.`
+          );
+        }
+      }
+
+      let query;
+      if (schema) {
+        query = `
+          SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+          FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = @tableSchema AND TABLE_NAME = @tableName
+          ORDER BY ORDINAL_POSITION
+        `;
+        request.input("tableSchema", sql.VarChar, schema);
+        request.input("tableName", sql.VarChar, tableName);
+      } else {
+        query = `
+          SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+          FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_NAME = @tableName
+          ORDER BY ORDINAL_POSITION
+        `;
+        request.input("tableName", sql.VarChar, tableName);
+      }
 
       const result = await request.query(query);
       await transaction.commit();
@@ -320,6 +357,8 @@ async function getTableSchema(table, dbKey) {
         isError: false,
       };
     } catch (error) {
+      const actualDbKey = dbKey || getDefaultDbKey();
+      updateConnectionStatus(actualDbKey, "error", error);
       console.error(
         `Error retrieving schema for table '${validTable}': ${error.message}`
       );

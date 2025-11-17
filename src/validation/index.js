@@ -12,15 +12,16 @@ const sqlQuerySchema = z.object({
 
 /**
  * Schema for table name validation
+ * Accepts either <table> or <schema>.<table>
  */
 const tableNameSchema = z.object({
   table: z
     .string()
     .min(1, { message: "Table name cannot be empty" })
-    .max(128, { message: "Table name is too long" })
-    .regex(/^[a-zA-Z0-9_]+$/, {
+    .max(260, { message: "Table name is too long" })
+    .regex(/^[a-zA-Z0-9_#$@]+(?:\.[a-zA-Z0-9_#$@]+)?$/, {
       message:
-        "Table name can only contain alphanumeric characters and underscores",
+        "Table name can only contain alphanumeric characters, underscores, #, $, @, and optionally schema.table format",
     }),
 });
 
@@ -50,10 +51,14 @@ const dbKeyQuerySchema = dbKeySchema.merge(sqlQuerySchema);
 
 /**
  * Schema for database resource URI validation
+ * Accepts either `mssql://<table>/data` or `mssql://<schema>.<table>/data`.
  */
-const resourceUriSchema = z.string().regex(/^mssql:\/\/[a-zA-Z0-9_]+\/data$/, {
-  message: "URI must match the pattern mssql://<table_name>/data",
-});
+const resourceUriSchema = z
+  .string()
+  .regex(/^mssql:\/\/[a-zA-Z0-9_#$@]+(?:\.[a-zA-Z0-9_#$@]+)?\/data$/, {
+    message:
+      "URI must match the pattern mssql://<table>/data or mssql://<schema>.<table>/data",
+  });
 
 /**
  * Schema for database configuration validation

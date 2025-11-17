@@ -220,6 +220,14 @@ Object.keys(dbConfigs).forEach((dbKey) => {
 });
 
 /**
+ * Returns the default database key (first available key)
+ * @returns {string} The default database key
+ */
+function getDefaultDbKey() {
+  return Object.keys(dbConfigs)[0];
+}
+
+/**
  * Returns the config for the given dbKey (e.g., 'maindb', 'reportingdb', etc.).
  * If dbKey is not provided, falls back to the first available config, usually 'maindb'.
  * Throws if not found.
@@ -236,8 +244,7 @@ function getDbConfig(dbKey) {
   }
 
   // Fallback: return the first available config (usually maindb)
-  const firstKey = Object.keys(dbConfigs)[0];
-  return dbConfigs[firstKey];
+  return dbConfigs[getDefaultDbKey()];
 }
 
 /**
@@ -266,6 +273,7 @@ function updateConnectionStatus(dbKey, status, error = null) {
 
 module.exports = {
   getDbConfig,
+  getDefaultDbKey,
   dbConfigs,
   connectionStatus,
   getConnectionStatus,
