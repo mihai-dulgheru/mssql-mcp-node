@@ -2,26 +2,39 @@
   "name": "mssql-mcp-node",
   "version": "3.0.0",
   "description": "MCP server for Microsoft SQL Server",
+  "keywords": [
+    "mssql",
+    "mcp",
+    "server",
+    "nodejs"
+  ],
+  "homepage": "https://github.com/mihai-dulgheru/mssql-mcp-node#readme",
+  "bugs": {
+    "url": "https://github.com/mihai-dulgheru/mssql-mcp-node/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mihai-dulgheru/mssql-mcp-node.git"
   },
-  "bugs": {
-    "url": "https://github.com/mihai-dulgheru/mssql-mcp-node/issues"
-  },
-  "homepage": "https://github.com/mihai-dulgheru/mssql-mcp-node#readme",
+  "license": "MIT",
+  "author": "Mihai-Nicolae Dulgheru <mihai.dulgheru18@gmail.com>",
   "main": "src/index.js",
-  "scripts": {
-    "start": "node src/index.js",
-    "start:http": "node src/http.js",
-    "dev": "nodemon src/index.js",
-    "dev:http": "nodemon src/http.js",
-    "test": "node --test \"test/*.test.js\"",
-    "smoke": "node scripts/smoke.js",
-    "integration": "node scripts/integration.js"
-  },
   "bin": {
     "mssql-mcp-node": "./src/index.js"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "dev:http": "nodemon src/http.js",
+    "integration": "node scripts/integration.js",
+    "smoke": "node scripts/smoke.js",
+    "start": "node src/index.js",
+    "start:http": "node src/http.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -36,13 +49,5 @@
     "globals": "^16.0.0",
     "nodemon": "^3.1.9",
     "prettier": "^3.5.3"
-  },
-  "keywords": [
-    "mssql",
-    "mcp",
-    "server",
-    "nodejs"
-  ],
-  "author": "Mihai-Nicolae Dulgheru <mihai.dulgheru18@gmail.com>",
-  "license": "MIT"
+  }
 }
