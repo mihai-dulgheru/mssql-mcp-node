@@ -137,3 +137,6 @@ dist
 
 # MCP servers
 .vscode/mcp.json
+
+# Local docs (plans, scratch notes)
+docs/

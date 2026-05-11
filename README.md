@@ -3,23 +3,41 @@
 ![npm version](https://img.shields.io/npm/v/mssql-mcp-node)
 ![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-A Node.js implementation of the Model Context Protocol server for Microsoft SQL Server databases. This server provides a standardized API interface to interact with SQL Server databases, exposing database tables as resources and offering tools to execute SQL queries and retrieve schema information.
+A Node.js implementation of the Model Context Protocol server for Microsoft SQL Server. Exposes a configured database (or set of databases) to an MCP client via 11 introspection and query tools, table resources, and guided prompts - over either stdio or Streamable HTTP.
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env   # then edit credentials
+npm start              # stdio transport (Claude Desktop, VS Code, etc.)
+npm run start:http     # Streamable HTTP transport on :3000 (POST /mcp)
+```
+
+By default the server is read-only. Set `MSSQL_ENABLE_WRITES=true` to opt into `execute_write_query`.
+
+## Breaking changes from 2.x
+
+| 2.x                                      | 3.x                                                                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `execute_sql` (regex-based safety check) | `execute_read_query` + `execute_write_query` (gated by `MSSQL_ENABLE_WRITES`)                                                           |
+| `get_table_schema`                       | `describe_table`                                                                                                                        |
+| `list_databases`                         | `list_databases` (richer output + pool status)                                                                                          |
+| Bespoke REST API in `src/express.js`     | MCP Streamable HTTP transport at `POST /mcp`                                                                                            |
+| New `ConnectionPool` per call            | Per-`dbKey` pool, cached and reused                                                                                                     |
+| `get_table_schema` only                  | + `list_tables`, `list_views`, `list_indexes`, `list_foreign_keys`, `list_stored_procedures`, `describe_database`, `describe_procedure` |
+| -                                        | Prompts: `explore_database`, `summarize_table`                                                                                          |
 
 ## Multi-Database Support
 
-This project now features automatic configuration detection that allows it to work in two modes:
+Two modes; the server auto-detects from the environment:
 
-1. **Single-database mode** - Uses simple `MSSQL_*` variables to connect to one database
-2. **Multi-database mode** - Uses prefixed environment variables (`MSSQL_<DBNAME>_*`) to connect to multiple databases with custom names
+1. **Single-database** - `MSSQL_*` variables, exposed as `dbKey="maindb"`
+2. **Multi-database** - `MSSQL_<NAME>_*` variables, one config per `<NAME>` (lowercased)
 
-The server auto-detects which mode is active at runtime and exposes the same REST/MCP interface in either case. In multi-database mode, you can use any database names you prefer (e.g., `MSSQL_MAINDB_*`, `MSSQL_REPORTINGDB_*`, `MSSQL_ANALYTICS_*`, `MSSQL_CUSTOMERS_*`, etc.).
-
-## Environment Configuration
-
-### Single-Database Mode
+### Single-database mode
 
 ```ini
-# Single database configuration
 MSSQL_SERVER=your_sql_server_address
 MSSQL_PORT=1433
 MSSQL_USER=your_username
@@ -29,341 +47,198 @@ MSSQL_ENCRYPT=true
 MSSQL_TRUST_SERVER_CERTIFICATE=false
 ```
 
-### Multi-Database Mode
+### Multi-database mode
 
 ```ini
-# Main database
-MSSQL_MAINDB_SERVER=your_sql_server_address
-MSSQL_MAINDB_PORT=1433
-MSSQL_MAINDB_USER=your_username
-MSSQL_MAINDB_PASSWORD=your_password
+MSSQL_MAINDB_SERVER=...
+MSSQL_MAINDB_USER=...
+MSSQL_MAINDB_PASSWORD=...
 MSSQL_MAINDB_DATABASE=main_db_name
 MSSQL_MAINDB_ENCRYPT=true
 MSSQL_MAINDB_TRUST_SERVER_CERTIFICATE=false
 
-# Reporting database
-MSSQL_REPORTINGDB_SERVER=your_sql_server_address
-MSSQL_REPORTINGDB_PORT=1433
-MSSQL_REPORTINGDB_USER=your_username
-MSSQL_REPORTINGDB_PASSWORD=your_password
+MSSQL_REPORTINGDB_SERVER=...
+MSSQL_REPORTINGDB_USER=...
+MSSQL_REPORTINGDB_PASSWORD=...
 MSSQL_REPORTINGDB_DATABASE=reporting_db_name
 MSSQL_REPORTINGDB_ENCRYPT=true
 MSSQL_REPORTINGDB_TRUST_SERVER_CERTIFICATE=false
 ```
 
-#### Custom Database Names Example
+Custom names work the same way - `MSSQL_ANALYTICS_*` exposes `dbKey="analytics"`, etc. Per-database credentials fall back to the global `MSSQL_USER` / `MSSQL_PASSWORD` / `MSSQL_SERVER` if omitted.
 
-You can use any database names you prefer by following the pattern `MSSQL_<YOUR_CUSTOM_NAME>_*`:
+> Configure **either** single-database **or** multi-database variables, not both. If any `MSSQL_<NAME>_DATABASE` is present, multi-db wins.
+
+### Write opt-in
 
 ```ini
-# Analytics database
-MSSQL_ANALYTICS_SERVER=analytics.example.com
-MSSQL_ANALYTICS_PORT=1433
-MSSQL_ANALYTICS_USER=analytics_user
-MSSQL_ANALYTICS_PASSWORD=analytics_password
-MSSQL_ANALYTICS_DATABASE=analytics_data
-MSSQL_ANALYTICS_ENCRYPT=true
-MSSQL_ANALYTICS_TRUST_SERVER_CERTIFICATE=false
-
-# Customer database
-MSSQL_CUSTOMERS_SERVER=customers.example.com
-MSSQL_CUSTOMERS_PORT=1433
-MSSQL_CUSTOMERS_USER=customer_user
-MSSQL_CUSTOMERS_PASSWORD=customer_password
-MSSQL_CUSTOMERS_DATABASE=customer_data
-MSSQL_CUSTOMERS_ENCRYPT=true
-MSSQL_CUSTOMERS_TRUST_SERVER_CERTIFICATE=false
+MSSQL_ENABLE_WRITES=true   # enables execute_write_query; defaults to false
 ```
 
-The server will automatically detect any database configurations following this pattern and make them available with lowercase keys (e.g., `analytics`, `customers`).
+When disabled, `execute_write_query` returns an error before any connection attempt. `execute_read_query` always runs inside a transaction that is rolled back regardless of outcome, so accidental writes inside a "read" query are non-durable.
 
-> **Important:** Configure EITHER the Single-Database OR the Multi-Database variables in your `.env` file - not both. The server detects which mode to use based on the presence of specific variables.
+For real safety, also give the configured DB user only the grants you intend it to have - least privilege is the source of truth, not the tool split.
 
-### Configuration and Behavior Matrix
+## Environment variables
 
-| Launch Config         | Environment Setup         | Behavior                                          |
-| --------------------- | ------------------------- | ------------------------------------------------- |
-| mssql-mcp-node-single | Single-Database variables | Operates in single-DB mode with one database      |
-| mssql-mcp-node-multi  | Multi-Database variables  | Operates in multi-DB mode with multiple databases |
+Consolidated reference. All 2.x variables still work identically - the only additions in 3.x are `MSSQL_ENABLE_WRITES` and the `MSSQL_TEST_*` family (integration-script only, never read by the server).
 
-### Default dbKey Behavior
+### Database connection (used by the MCP server)
 
-In multi-database mode, when no `dbKey` is specified in the request, the server automatically uses the first database in your configuration alphabetically. This makes API requests more concise while maintaining backward compatibility.
+| Variable                                | Mode   | Required     | Default       | Notes                                                                                                         |
+| --------------------------------------- | ------ | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `MSSQL_SERVER`                          | single | yes          | `localhost`   | Hostname or IP.                                                                                               |
+| `MSSQL_PORT`                            | single | no           | mssql default | Coerced to integer.                                                                                           |
+| `MSSQL_USER`                            | single | yes          | -             | Login name.                                                                                                   |
+| `MSSQL_PASSWORD`                        | single | yes          | -             | -                                                                                                             |
+| `MSSQL_DATABASE`                        | single | yes          | -             | Exposed as `dbKey="maindb"`.                                                                                  |
+| `MSSQL_ENCRYPT`                         | single | no           | `false`       | Set `true` to encrypt the connection.                                                                         |
+| `MSSQL_TRUST_SERVER_CERTIFICATE`        | single | no           | `true`        | Set `false` to enforce certificate validation.                                                                |
+| `MSSQL_<NAME>_SERVER`                   | multi  | no           | global        | Falls back to `MSSQL_SERVER` if omitted.                                                                      |
+| `MSSQL_<NAME>_PORT`                     | multi  | no           | mssql default | -                                                                                                             |
+| `MSSQL_<NAME>_USER`                     | multi  | no           | global        | Falls back to `MSSQL_USER`.                                                                                   |
+| `MSSQL_<NAME>_PASSWORD`                 | multi  | no           | global        | Falls back to `MSSQL_PASSWORD`.                                                                               |
+| `MSSQL_<NAME>_DATABASE`                 | multi  | yes (per DB) | -             | Presence of any `_DATABASE` switches the server into multi-db mode. Exposed as `dbKey="<name>"` (lowercased). |
+| `MSSQL_<NAME>_ENCRYPT`                  | multi  | no           | `false`       | -                                                                                                             |
+| `MSSQL_<NAME>_TRUST_SERVER_CERTIFICATE` | multi  | no           | `true`        | -                                                                                                             |
 
-## Features
+### Server behavior
 
-- **Auto-detect Configuration Mode**: Automatically determines whether to use single or multi-database mode
-- **Resource Management**: Access SQL Server tables as resources
-- **SQL Query Execution**: Execute SQL queries against the connected database(s)
-- **Schema Information**: Retrieve metadata and schema details for database tables
-- **MCP Protocol Support**: Communicates via STDIO using the Model Context Protocol SDK
-- **HTTP API**: For local testing using Express
-- **Enhanced Validation**: Uses Zod for robust input validation with clear error messages
-- **Security Features**: Parameterized queries and SQL injection protection
+| Variable              | Required | Default | Effect                                                                                                                        |
+| --------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `MSSQL_ENABLE_WRITES` | no       | `false` | When `true`, `execute_write_query` is allowed to run. With it unset/false, the tool errors out before any connection attempt. |
+| `PORT`                | no       | `3000`  | HTTP transport only (`npm run start:http`). Ignored in stdio mode.                                                            |
 
-## Installation
+### Integration script (`scripts/integration.js`, never read by the server)
 
-### Prerequisites
+| Variable              | Required | Default     | Notes                                          |
+| --------------------- | -------- | ----------- | ---------------------------------------------- |
+| `MSSQL_TEST_SERVER`   | no       | `localhost` | Target SQL Server (Docker, LocalDB, anywhere). |
+| `MSSQL_TEST_PORT`     | no       | `1433`      | -                                              |
+| `MSSQL_TEST_USER`     | no       | `sa`        | -                                              |
+| `MSSQL_TEST_PASSWORD` | yes      | -           | The script exits 2 without it.                 |
 
-- Node.js (v14 or higher)
-- Access to a Microsoft SQL Server database
+> **Single vs multi:** configure **either** the bare `MSSQL_*` variables **or** the prefixed `MSSQL_<NAME>_*` variables - not both. If any `MSSQL_<NAME>_DATABASE` is present, multi-db mode wins. Your existing 2.x `.env` continues to work unchanged.
 
-### Steps
+## Transports
 
-1. **Clone the Repository**
+### Stdio (default for MCP clients)
 
-   ```bash
-   git clone https://github.com/mihai-dulgheru/mssql-mcp-node.git
-   cd mssql-mcp-node
-   ```
+```bash
+npm start
+```
 
-2. **Install Dependencies**
+Runs `src/index.js`. Use this from Claude Desktop, VS Code MCP, or any client that spawns the server as a subprocess.
 
-   ```bash
-   npm install
-   ```
+### Streamable HTTP
 
-3. **Configure Environment Variables**
+```bash
+npm run start:http       # listens on $PORT (default 3000)
+```
 
-   Copy the example environment configuration and update as needed:
+Endpoint: `POST /mcp` (JSON-RPC 2.0). The server runs in **stateless** mode - every POST gets its own server instance - which is easier to scale and matches the SDK's recommended default. `GET /mcp` and `DELETE /mcp` return 405 (no SSE streams in stateless mode).
 
-   ```bash
-   cp .env.example .env
-   ```
+`GET /healthz` returns `{ ok: true }` for liveness checks.
 
-   Then, update the `.env` file with your SQL Server connection details using EITHER single-database OR multi-database format (see above sections).
+#### Smoke test
 
-   > **Security Recommendations:**
-   >
-   > - **Development:**
-   >   - `MSSQL_ENCRYPT="false"` or `MSSQL_*DB_ENCRYPT="false"`
-   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="true"` or `MSSQL_*DB_TRUST_SERVER_CERTIFICATE="true"`
-   > - **Production:**
-   >   - `MSSQL_ENCRYPT="true"` or `MSSQL_*DB_ENCRYPT="true"` (to encrypt the connection)
-   >   - `MSSQL_TRUST_SERVER_CERTIFICATE="false"` or `MSSQL_*DB_TRUST_SERVER_CERTIFICATE="false"` (to enforce certificate validation)
+```bash
+curl -sS -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
-## Usage
+## Tool catalog
 
-There are two modes of operation:
+All tools accept an optional `dbKey`. In single-database mode the default is `maindb`; in multi-database mode it's the first key loaded.
 
-### 1. MCP Mode (STDIO)
+Every tool returns both human-readable `content` (JSON text) and parsed `structuredContent` (the same payload as a typed object).
 
-This mode uses the Model Context Protocol (MCP) SDK with STDIO transport and is designed for integration with clients like Claude Desktop or VS Code.
+### Query tools
 
-- **Start MCP Mode:**
+| Tool                  | Annotations          | Notes                                                                                                                                           |
+| --------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `execute_read_query`  | readOnly, idempotent | Streamed, rollback-only. Server cancels after `offset + limit` rows. Inputs: `query`, optional `dbKey`, `limit` (≤1000, default 100), `offset`. |
+| `execute_write_query` | destructive          | Requires `MSSQL_ENABLE_WRITES=true`. Inputs: `query`, optional `dbKey`.                                                                         |
 
-  ```bash
-  npm start
-  ```
+### Catalog (paginated)
 
-  This runs the MCP server from `src/index.js`.
+| Tool                     | Inputs                              |
+| ------------------------ | ----------------------------------- |
+| `list_databases`         | -                                   |
+| `describe_database`      | optional `dbKey`                    |
+| `list_tables`            | optional `dbKey`, `limit`, `offset` |
+| `list_views`             | optional `dbKey`, `limit`, `offset` |
+| `list_stored_procedures` | optional `dbKey`, `limit`, `offset` |
 
-### 2. HTTP Mode (Express)
+### Per-object inspection
 
-For local testing via HTTP, you can start the Express server that exposes API endpoints.
+| Tool                 | Inputs                                             |
+| -------------------- | -------------------------------------------------- |
+| `describe_table`     | `table` (bare or `schema.table`), optional `dbKey` |
+| `describe_procedure` | `procedure`, optional `dbKey`                      |
+| `list_indexes`       | `table`, optional `dbKey`                          |
+| `list_foreign_keys`  | optional `table` (whole-DB if omitted), `dbKey`    |
 
-- **Start Express Mode:**
+### Example: `execute_read_query`
 
-  ```bash
-  npm run start:express
-  ```
-
-  This runs the Express server defined in `src/express.js`.
-
-- **Development Mode with Auto-Reload:**
-
-  ```bash
-  npm run dev:express
-  ```
-
-### API Endpoints (Express Mode)
-
-- **List Resources (Tables):**
-
-  ```http
-  GET /resources?dbKey=maindb
-  ```
-
-  **Example Response:**
-
-  ```json
-  [
-    {
-      "uri": "mssql://dbo.YourTable/data",
-      "name": "Table: dbo.YourTable",
-      "description": "Data in table: dbo.YourTable (DB: your_database)",
-      "mimeType": "text/plain"
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "execute_read_query",
+    "arguments": {
+      "query": "SELECT TOP 5 * FROM dbo.Users",
+      "dbKey": "maindb",
+      "limit": 5
     }
-  ]
-  ```
-
-- **Get Resource Data:**
-
-  ```http
-  GET /resource?uri=mssql://dbo.YourTable/data&dbKey=maindb
-  ```
-
-  **Example Response:**
-
-  ```
-  # Database: your_database
-  id,name,created_at
-  1,Item1,2025-01-01
-  2,Item2,2025-01-02
-  ```
-
-- **List Available Tools:**
-
-  ```http
-  GET /tools
-  ```
-
-  **Example Response:**
-
-  ```json
-  [
-    {
-      "name": "execute_sql",
-      "description": "Execute an SQL query on the SQL Server (multi-database support)",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "The SQL query to execute"
-          },
-          "dbKey": {
-            "type": "string",
-            "description": "The database key to use (e.g., 'maindb', 'reportingdb', etc.). Optional in single-db mode."
-          }
-        },
-        "required": ["query"]
-      }
-    },
-    {
-      "name": "get_table_schema",
-      "description": "Retrieve the schema of a specified table (multi-database support)",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "table": {
-            "type": "string",
-            "description": "The name of the table (supports schema.table format, e.g., 'dbo.YourTable')"
-          },
-          "dbKey": {
-            "type": "string",
-            "description": "The database key to use (e.g., 'maindb', 'reportingdb', etc.). Optional in single-db mode."
-          }
-        },
-        "required": ["table"]
-      }
-    }
-  ]
-  ```
-
-- **Execute SQL Query:**
-
-  ```http
-  POST /execute-sql
-  ```
-
-  **Request Body:**
-
-  ```json
-  {
-    "query": "SELECT TOP 10 * FROM YourTable",
-    "dbKey": "maindb" // Optional, defaults to first configured database
   }
-  ```
+}
+```
 
-  **Response Example for SELECT queries:**
+Result `structuredContent`:
 
-  ```json
-  {
-    "db": "your_database",
-    "rowCount": 2,
-    "recordset": [
-      { "id": 1, "name": "Item1", "created_at": "2025-01-01" },
-      { "id": 2, "name": "Item2", "created_at": "2025-01-02" }
-    ]
-  }
-  ```
+```json
+{
+  "db": "your_database",
+  "dbKey": "maindb",
+  "rowCount": 5,
+  "totalRowsReturnedByQuery": 5,
+  "truncated": false,
+  "recordset": [{ "id": 1, "name": "Item1", "created_at": "2025-01-01" }]
+}
+```
 
-  **Response Example for non-SELECT queries:**
+## Resources
 
-  ```json
-  {
-    "message": "Query executed successfully",
-    "db": "your_database",
-    "rowsAffected": 1
-  }
-  ```
+The server exposes one resource template:
 
-- **Get Table Schema:**
+```
+mssql://<dbKey>@<schema>.<table>/data
+```
 
-  ```http
-  POST /get-table-schema
-  ```
+Reading the resource returns the first 100 rows as CSV with a leading `# Database: <name>` comment. `resources/list` enumerates every base table across every configured `dbKey` (capped at 500 tables per DB to bound the response).
 
-  **Request Body:**
+## Prompts
 
-  ```json
-  {
-    "table": "dbo.YourTable",
-    "dbKey": "reportingdb" // Optional, defaults to first configured database
-  }
-  ```
-
-  For tables in the default schema, you can omit the schema prefix:
-
-  ```json
-  {
-    "table": "YourTable",
-    "dbKey": "reportingdb"
-  }
-  ```
-
-  **Response Example:**
-
-  ```json
-  {
-    "db": "reporting_db_name",
-    "table": "YourTable",
-    "columns": [
-      {
-        "COLUMN_NAME": "id",
-        "DATA_TYPE": "int",
-        "CHARACTER_MAXIMUM_LENGTH": null
-      },
-      {
-        "COLUMN_NAME": "name",
-        "DATA_TYPE": "varchar",
-        "CHARACTER_MAXIMUM_LENGTH": 100
-      },
-      {
-        "COLUMN_NAME": "created_at",
-        "DATA_TYPE": "datetime",
-        "CHARACTER_MAXIMUM_LENGTH": null
-      }
-    ],
-    "rowCount": 3
-  }
-  ```
+| Prompt             | Args                      | Purpose                                                      |
+| ------------------ | ------------------------- | ------------------------------------------------------------ |
+| `explore_database` | optional `dbKey`          | Step-by-step instructions for surveying an unknown database. |
+| `summarize_table`  | `table`, optional `dbKey` | Produces a column/index/FK/sample-rows brief on one table.   |
 
 ## Integration with Claude Desktop or VS Code
 
-To integrate this MCP server with Claude Desktop or VS Code, add the following JSON snippet to your MCP configuration file. For Claude Desktop, this is typically in `mcpServers.json`, and for VS Code, in your workspace configuration (`.vscode/mcp.json`).
+The package ships an `mssql-mcp-node` bin, so you can invoke it via `npx`.
 
-### VS Code
-
-For VS Code 1.86.0 and newer, use either single or multi-database configuration:
-
-#### Single-Database Configuration
+### Single-database
 
 ```json
 {
   "servers": {
-    "mssql-mcp-node-single": {
+    "mssql-mcp-node": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
       "env": {
@@ -380,17 +255,16 @@ For VS Code 1.86.0 and newer, use either single or multi-database configuration:
 }
 ```
 
-#### Multi-Database Configuration
+### Multi-database
 
 ```json
 {
   "servers": {
-    "mssql-mcp-node-multi": {
+    "mssql-mcp-node": {
       "command": "npx",
       "args": ["-y", "mssql-mcp-node"],
       "env": {
         "MSSQL_MAINDB_SERVER": "your_server_name",
-        "MSSQL_MAINDB_PORT": "1433",
         "MSSQL_MAINDB_USER": "your_username",
         "MSSQL_MAINDB_PASSWORD": "your_password",
         "MSSQL_MAINDB_DATABASE": "main_database",
@@ -398,7 +272,6 @@ For VS Code 1.86.0 and newer, use either single or multi-database configuration:
         "MSSQL_MAINDB_TRUST_SERVER_CERTIFICATE": "false",
 
         "MSSQL_REPORTINGDB_SERVER": "your_server_name",
-        "MSSQL_REPORTINGDB_PORT": "1433",
         "MSSQL_REPORTINGDB_USER": "your_username",
         "MSSQL_REPORTINGDB_PASSWORD": "your_password",
         "MSSQL_REPORTINGDB_DATABASE": "reporting_database",
@@ -410,173 +283,98 @@ For VS Code 1.86.0 and newer, use either single or multi-database configuration:
 }
 ```
 
-You can also install this package locally instead of using `npx`:
+To enable writes, also add `"MSSQL_ENABLE_WRITES": "true"`. Use a dedicated SQL login with the minimum grants the workload needs.
 
-```bash
-npm install --save-dev mssql-mcp-node
-```
-
-## MCP Tools
-
-When using the MCP server through the Claude Desktop or VS Code integration, you can use the following tools:
-
-### execute_sql
-
-Execute an SQL query against the connected database(s).
-
-**Input:**
-
-```json
-{
-  "query": "SELECT TOP 10 * FROM YourTable",
-  "dbKey": "maindb" // Optional in both modes, defaults to first available database
-}
-```
-
-**Example usage in Claude Desktop:**
+## Architecture
 
 ```
-I'd like to see data from the YourTable table in the main database.
+src/
+├── index.js              # stdio entry
+├── http.js               # Streamable HTTP entry
+├── server.js             # McpServer factory
+├── config.js             # env -> validated connection configs
+├── validation.js         # shared Zod shapes
+├── resources.js          # ResourceTemplate registration
+├── prompts.js            # MCP prompts
+├── db/
+│   ├── pools.js          # per-dbKey ConnectionPool cache
+│   ├── safety.js         # runRead (rollback-only) + runWrite (gated)
+│   └── introspection.js  # parameterized INFORMATION_SCHEMA / sys.* queries
+└── tools/
+    ├── index.js          # tool barrel
+    ├── execute-read-query.js
+    ├── execute-write-query.js
+    ├── list-databases.js
+    ├── describe-database.js
+    ├── list-tables.js
+    ├── list-views.js
+    ├── list-indexes.js
+    ├── list-foreign-keys.js
+    ├── list-stored-procedures.js
+    ├── describe-table.js
+    └── describe-procedure.js
 ```
 
-### get_table_schema
+### Security model
 
-Retrieve the schema information for a specific table.
-
-**Input:**
-
-```json
-{
-  "table": "YourTable",
-  "dbKey": "reportingdb" // Optional in both modes, defaults to first available database
-}
-```
-
-**Example usage in Claude Desktop:**
-
-```
-What columns are in the YourTable table in the reporting database?
-```
-
-### list_databases
-
-List all configured databases and their connection information.
-
-**Input:**
-
-```json
-{}
-
-
-// No parameters required
-```
-
-**Example usage in Claude Desktop:**
-
-```
-Show me all the available databases in the configuration.
-```
+- **Read isolation** - `execute_read_query` and every `list_*`/`describe_*` tool runs inside a transaction that is always rolled back. This is a **guardrail against accidental writes** (a `SELECT ... INTO new_table`, an INSERT smuggled past a comment), not a sandbox against an adversarial query: an explicit `COMMIT TRANSACTION` inside the user's SQL ends the outer transaction, and following statements run in autocommit mode. Use a least-privilege SQL login if you need real isolation against intentional misuse.
+- **Write opt-in** - `execute_write_query` is gated by `MSSQL_ENABLE_WRITES=true`. When disabled it errors out _before_ a connection is acquired, so no resources are spent and no probing is possible.
+- **Parameterized introspection** - every `list_*`/`describe_*` SQL uses `@param` placeholders rather than string concatenation; table identifiers are restricted by Zod to `/^[a-zA-Z0-9_#$@]+(?:\.[a-zA-Z0-9_#$@]+)?$/` (bare `Users` or two-part `dbo.Users` - no spaces, brackets, or three-part names) and bracket-quoted (`[schema].[table]`) for the CSV resource path. Identifiers with spaces or non-ASCII characters aren't supported by the introspection tools; use `execute_read_query` with raw SQL for those.
+- **Cancellation** - tool handlers honor the MCP request `AbortSignal`; an aborted request fires `request.cancel()` on the underlying mssql request.
+- **Least privilege** - the safest setup is a SQL login with only `SELECT` (and `EXECUTE` if needed) on the relevant schemas. The MCP layer reinforces that, it doesn't replace it.
 
 ## Testing
 
-A Postman collection is provided in the `postman/` folder for testing the HTTP endpoints of the Express server. Here are curl examples to test both single and multi-database configurations:
+```bash
+npm test
+```
 
-### Testing with curl
+Runs unit tests with the built-in `node --test` runner. No external DB needed - the suite covers config parsing, validation, identifier escaping, the rollback-only contract, pool caching/retry, parameterized SQL placeholders, and tool registration metadata.
 
-Test all four combinations (single/multi-database mode × maindb/reportingdb):
-
-#### Single-Database Mode (with one database only)
+For a manual smoke test against the HTTP transport:
 
 ```bash
-# List Resources
-curl -X GET "http://localhost:3000/resources"
-
-# Execute SQL Query
-curl -X POST "http://localhost:3000/execute-sql" \
+PORT=3000 npm run start:http &
+curl -s http://localhost:3000/healthz
+curl -s -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"query": "SELECT TOP 10 * FROM Users"}'
-
-# Get Table Schema
-curl -X POST "http://localhost:3000/get-table-schema" \
-  -H "Content-Type: application/json" \
-  -d '{"table": "Users"}'
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-#### Multi-Database Mode
+For interactive end-to-end testing against a real database, use the MCP Inspector:
 
 ```bash
-# List Resources from maindb
-curl -X GET "http://localhost:3000/resources?dbKey=maindb"
-
-# List Resources from reportingdb
-curl -X GET "http://localhost:3000/resources?dbKey=reportingdb"
-
-# Execute SQL Query on maindb
-curl -X POST "http://localhost:3000/execute-sql" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "SELECT TOP 10 * FROM Users", "dbKey": "maindb"}'
-
-# Execute SQL Query on reportingdb
-curl -X POST "http://localhost:3000/execute-sql" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "SELECT TOP 10 * FROM SalesReport", "dbKey": "reportingdb"}'
+npx @modelcontextprotocol/inspector node src/index.js
 ```
 
-## Schema Validation
+### Real-DB integration test (disposable)
 
-This project uses [Zod](https://zod.dev/) for schema validation throughout the application to ensure data integrity and provide more robust error handling.
+`npm run integration` spins up a throwaway database, exercises every tool against real SQL Server, and drops it. The script also covers the streaming-cutoff and rollback-isolation paths that the unit tests can only mock.
 
-### Implemented Schema Validations
+Easiest setup is a one-shot Docker container:
 
-- **SQL Query Validation**: Validates that SQL queries are non-empty strings within a reasonable length limit.
-- **Table Name Validation**: Ensures table names follow proper naming conventions (alphanumeric characters and underscores only).
-- **Resource URI Validation**: Validates that resource URIs follow the expected format (`mssql://<table_name>/data` or `mssql://<schema>.<table_name>/data`).
-- **Database Configuration Validation**: Ensures that all required database configuration parameters are provided and properly formatted.
-- **Safety Checks**: SQL queries are validated against a list of potentially dangerous operations for additional security.
+```bash
+docker run -d --name mcp-mssql-test \
+  -e "ACCEPT_EULA=Y" \
+  -e "MSSQL_SA_PASSWORD=YourStr0ng!Passw0rd" \
+  -p 1433:1433 \
+  mcr.microsoft.com/mssql/server:2022-latest
 
-### Security Enhancements
+# wait ~10s for SQL Server to initialize, then:
+MSSQL_TEST_PASSWORD='YourStr0ng!Passw0rd' npm run integration
 
-1. **SQL Injection Protection**: Uses parameterized queries wherever possible.
-2. **Query Safety Validation**: Checks for potentially dangerous SQL operations (DROP, TRUNCATE, etc.)
-3. **Enhanced Error Messages**: Provides detailed but safe error messages that don't expose sensitive details.
-4. **Configuration Validation**: Validates all configuration parameters before attempting to connect.
-
-## Project Structure
-
+# full cleanup:
+docker rm -f mcp-mssql-test
 ```
-mssql-mcp-node/
-├── .editorconfig
-├── .env                  # Environment variables file (not committed)
-├── .env.example          # Sample environment configuration (both modes)
-├── .gitignore
-├── .markdownlint.json
-├── .prettierignore
-├── .prettierrc
-├── eslint.config.mjs
-├── LICENSE
-├── node_modules/
-├── package-lock.json
-├── package.json
-├── postman/              # Postman collection for API testing
-├── README.md
-└── src/
-    ├── config/
-    │   ├── dbConfig.js    # Database connection handling module
-    │   └── index.js       # Configuration auto-detection module
-    ├── express.js         # Entry point for Express server (HTTP mode)
-    ├── index.js           # MCP server entry point (STDIO mode via SDK)
-    ├── modules/           # Core modules (resource and tool management)
-    │   ├── resources.js   # Functions for listing resources and reading table data
-    │   └── tools.js       # Functions for SQL operations
-    ├── server/            # Express server setup (used by express.js)
-    │   └── index.js       # Express server implementation
-    └── validation/        # Schema validation module using Zod
-        └── index.js       # Schema definitions and validation functions
-```
+
+The script creates `mcp_test_<timestamp>` inside the server, seeds it (Users, Orders with FK + index, a view, a stored procedure, 503 rows), runs ~20 tool-level assertions, and drops the database in a `finally` block - even on failure.
+
+Override targets via `MSSQL_TEST_SERVER`, `MSSQL_TEST_PORT`, `MSSQL_TEST_USER` if you'd rather point it at an existing SQL Server, LocalDB, or Azure SQL.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT - see [LICENSE](LICENSE).
 
 ## Author
 

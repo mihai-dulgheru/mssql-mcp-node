@@ -1,6 +1,6 @@
 {
   "name": "mssql-mcp-node",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "MCP server for Microsoft SQL Server",
   "repository": {
     "type": "git",
@@ -13,16 +13,18 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "start:express": "node src/express.js",
+    "start:http": "node src/http.js",
     "dev": "nodemon src/index.js",
-    "dev:express": "nodemon src/express.js"
+    "dev:http": "nodemon src/http.js",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node scripts/smoke.js",
+    "integration": "node scripts/integration.js"
   },
   "bin": {
     "mssql-mcp-node": "./src/index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0",
-    "body-parser": "^2.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "mssql": "^11.0.1",
