@@ -14,13 +14,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mihai-dulgheru/mssql-mcp-node.git"
+    "url": "git+https://github.com/mihai-dulgheru/mssql-mcp-node.git"
   },
   "license": "MIT",
   "author": "Mihai-Nicolae Dulgheru <mihai.dulgheru18@gmail.com>",
   "main": "src/index.js",
   "bin": {
-    "mssql-mcp-node": "./src/index.js"
+    "mssql-mcp-node": "src/index.js"
   },
   "files": [
     "src/",
