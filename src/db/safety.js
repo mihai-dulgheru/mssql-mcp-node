@@ -43,6 +43,26 @@ function attachAbort(request, signal) {
 }
 
 /**
+ * Best-effort rollback of the read wrapper transaction.
+ *
+ * EABORT means the server already rolled back (XACT_ABORT, severe error) and the
+ * driver has released the connection - nothing to do. Any other failure (e.g. the
+ * user's SQL contained an explicit COMMIT, or a request was still in progress) is
+ * logged rather than swallowed: a rollback that fails for the wrong reason can
+ * leave the connection borrowed from the pool forever (issue #8).
+ */
+async function rollbackQuietly(transaction) {
+  try {
+    await transaction.rollback();
+  } catch (err) {
+    if (err?.code === "EABORT") return;
+    console.error(
+      `[safety] rollback failed (${err?.code || "unknown"}): ${err?.message}`
+    );
+  }
+}
+
+/**
  * Run a read inside a transaction that is ALWAYS rolled back, even on success.
  *
  * This is a guardrail against accidental writes (a SELECT INTO, an INSERT smuggled
@@ -60,12 +80,7 @@ async function runRead(pool, fn, { mssql = sqlLib, signal } = {}) {
     attachAbort(request, signal);
     return await fn(request);
   } finally {
-    try {
-      await transaction.rollback();
-    } catch {
-      // ignore - rollback may fail if the transaction was implicitly closed
-      // (e.g., user query contained an explicit COMMIT)
-    }
+    await rollbackQuietly(transaction);
   }
 }
 
@@ -96,6 +111,12 @@ async function runWrite(
  *
  * Returns `{ rows, totalSeen, truncated }`. `truncated` is true iff there was at
  * least one row beyond `offset + limit` (which we cancelled before fetching the rest).
+ *
+ * Event contract (mssql stream mode): `error` may fire several times and fires
+ * while the request still holds the transaction's connection; `done` is always
+ * the last event and fires only after the driver has released it. We therefore
+ * settle on `done` - settling on `error` made the rollback in `finally` fail
+ * with EREQINPROG and leaked the transaction + pool connection (issue #8).
  */
 async function streamRead(
   pool,
@@ -115,13 +136,7 @@ async function streamRead(
       let totalSeen = 0;
       let truncated = false;
       let canceled = false;
-      let settled = false;
-
-      const settle = (fn, value) => {
-        if (settled) return;
-        settled = true;
-        fn(value);
-      };
+      let firstError = null;
 
       request.on("row", (row) => {
         totalSeen++;
@@ -139,28 +154,30 @@ async function streamRead(
         }
       });
       request.on("error", (err) => {
-        if (canceled) {
-          settle(resolve, { rows, totalSeen, truncated });
-        } else {
-          settle(reject, err);
+        // Errors caused by our own truncation cancel are expected: ECANCEL once
+        // the server acks the attention, or ETIMEOUT if it never does (tedious
+        // then drops the connection; rollback logs EINVALIDSTATE). A request
+        // timeout cannot surface here - tedious clears that timer on the first
+        // packet, and `canceled` is only set from a row event. Any other error
+        // (SQL error, abort-signal cancel) fails the read.
+        if (canceled && (err?.code === "ECANCEL" || err?.code === "ETIMEOUT")) {
+          return;
         }
+        if (!firstError) firstError = err;
       });
       request.on("done", () => {
-        settle(resolve, { rows, totalSeen, truncated });
+        if (firstError) reject(firstError);
+        else resolve({ rows, totalSeen, truncated });
       });
 
       try {
         request.query(query);
       } catch (err) {
-        settle(reject, err);
+        reject(err);
       }
     });
   } finally {
-    try {
-      await transaction.rollback();
-    } catch {
-      // ignore
-    }
+    await rollbackQuietly(transaction);
   }
 }
 

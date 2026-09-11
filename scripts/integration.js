@@ -340,6 +340,45 @@ async function runTests() {
     r.structuredContent.recordset[0].c === 0
   );
 
+  // ── issue #8: a SQL error inside streamRead must not leak the wrapper
+  // transaction / pool connection (rollback used to fail with EREQINPROG). ──
+  const mcpPool = await require("../src/db/pools").getPool(
+    config.getConfig().dbKey,
+    config.getConfig().config
+  );
+  for (let i = 1; i <= 3; i++) {
+    let sqlErr = null;
+    try {
+      await findTool("execute_read_query").handler({
+        query: "SELECT nonexistent_column_repro",
+        limit: 10,
+        offset: 0,
+      });
+    } catch (err) {
+      sqlErr = err;
+    }
+    check(
+      `issue #8 (#${i}): execute_read_query surfaces the SQL error`,
+      sqlErr !== null && /nonexistent_column_repro/i.test(sqlErr.message),
+      sqlErr ? sqlErr.message : "did not throw"
+    );
+    check(
+      `issue #8 (#${i}): no pool connection left borrowed after the SQL error`,
+      mcpPool.borrowed === 0,
+      `borrowed=${mcpPool.borrowed} size=${mcpPool.size}`
+    );
+  }
+  r = await findTool("execute_read_query").handler({
+    query: "SELECT @@TRANCOUNT AS tc",
+    limit: 1,
+    offset: 0,
+  });
+  check(
+    "issue #8: pool still serves reads with a clean transaction depth",
+    r.structuredContent.recordset[0].tc === 1 && mcpPool.borrowed === 0,
+    `tc=${r.structuredContent.recordset[0].tc} borrowed=${mcpPool.borrowed}`
+  );
+
   // ── execute_write_query ──
   let threw = false;
   try {

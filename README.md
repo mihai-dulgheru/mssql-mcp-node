@@ -350,7 +350,7 @@ npx @modelcontextprotocol/inspector node src/index.js
 
 ### Real-DB integration test (disposable)
 
-`npm run integration` spins up a throwaway database, exercises every tool against real SQL Server, and drops it. The script also covers the streaming-cutoff and rollback-isolation paths that the unit tests can only mock.
+`npm run integration` spins up a throwaway database, exercises every tool against real SQL Server, and drops it. The script also covers the streaming-cutoff, rollback-isolation, and SQL-error-cleanup paths (no pool connection left borrowed after a failed read) that the unit tests can only mock.
 
 Easiest setup is a one-shot Docker container:
 
@@ -368,7 +368,7 @@ MSSQL_TEST_PASSWORD='YourStr0ng!Passw0rd' npm run integration
 docker rm -f mcp-mssql-test
 ```
 
-The script creates `mcp_test_<timestamp>` inside the server, seeds it (Users, Orders with FK + index, a view, a stored procedure, 503 rows), runs ~20 tool-level assertions, and drops the database in a `finally` block - even on failure.
+The script creates `mcp_test_<timestamp>` inside the server, seeds it (Users, Orders with FK + index, a view, a stored procedure, 503 rows), runs ~30 tool-level assertions, and drops the database in a `finally` block - even on failure.
 
 Override targets via `MSSQL_TEST_SERVER`, `MSSQL_TEST_PORT`, `MSSQL_TEST_USER` if you'd rather point it at an existing SQL Server, LocalDB, or Azure SQL.
 
