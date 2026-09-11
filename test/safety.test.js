@@ -231,7 +231,11 @@ function streamingMssqlFactory({
         listeners[event] = fn;
       };
       this.query = () => {
+        // Real driver: base Request._query resets `canceled`, so a cancel()
+        // issued before query() is dropped.
+        canceled = false;
         activeRequest = true;
+        events.push(["query"]);
         onQuery?.();
         process.nextTick(async () => {
           for (let i = 0; i < rows.length; i++) {
@@ -344,7 +348,9 @@ test("streamRead: truncation cancel rolls back only after `done`", async () => {
   const names = eventNames(events);
   assert.ok(!names.includes("rollback-failed:EREQINPROG"), names.join(" "));
   assert.deepEqual(
-    names.filter((n) => n !== "begin" && !n.startsWith("error")),
+    names.filter(
+      (n) => n !== "begin" && n !== "query" && !n.startsWith("error")
+    ),
     ["cancel", "release", "rollback"]
   );
 });
@@ -447,4 +453,85 @@ test("runRead stays quiet when the server already aborted the transaction (EABOR
     mssql: rollbackFailingFactory("EABORT"),
   });
   assert.equal(err.mock.callCount(), 0);
+});
+
+// ── follow-ups to issue #8: begin() edge cases ──
+
+// Transaction whose begin() rejects after the pool handed out a connection
+// (connection.beginTransaction failed): rollback must still run to release it.
+function beginFailingFactory(events) {
+  const mssql = fakeMssqlFactory(events);
+  mssql.Transaction = function Transaction() {
+    this.begin = async () => {
+      events.push(["begin"]);
+      throw new Error("BEGIN TRAN failed");
+    };
+    this.rollback = async () => {
+      events.push(["rollback"]);
+    };
+  };
+  return mssql;
+}
+
+test("runRead: begin() failing after acquire still rolls back (releases the connection)", async () => {
+  const events = [];
+  await assert.rejects(
+    () =>
+      runRead({}, async () => "unreachable", {
+        mssql: beginFailingFactory(events),
+      }),
+    /BEGIN TRAN failed/
+  );
+  assert.ok(eventNames(events).includes("rollback"), eventNames(events));
+});
+
+test("runRead: begin() on a never-connected real pool surfaces ENOTOPEN and logs nothing (ENOTBEGUN)", async (t) => {
+  // Real driver, no database: acquire rejects before any connection is held,
+  // so the finally's rollback reports ENOTBEGUN, which must stay silent.
+  const err = t.mock.method(console, "error", () => {});
+  const pool = new (require("mssql").ConnectionPool)({
+    server: "127.0.0.1",
+    user: "x",
+    password: "x",
+    database: "x",
+  });
+  await assert.rejects(
+    () => runRead(pool, async (request) => request.query("SELECT 1")),
+    (e) => e.code === "ENOTOPEN"
+  );
+  assert.equal(err.mock.callCount(), 0, "ENOTBEGUN holds nothing - no log");
+});
+
+// runRead/streamRead run synchronously up to `await transaction.begin()`, so an
+// abort() issued right after the call lands while begin() is in flight - the
+// window where a cancel() issued before query() is dropped by the real driver.
+test("runRead: abort during begin() rejects without running the callback", async () => {
+  const events = [];
+  const controller = new AbortController();
+  let ran = false;
+  const pending = runRead(
+    {},
+    async () => {
+      ran = true;
+    },
+    { mssql: fakeMssqlFactory(events), signal: controller.signal }
+  );
+  controller.abort();
+  await assert.rejects(() => pending, /Request aborted/);
+  assert.equal(ran, false, "callback must not run after an abort");
+  assert.deepEqual(eventNames(events), ["begin:4", "rollback"]);
+});
+
+test("streamRead: abort during begin() rejects instead of running the query", async () => {
+  const events = [];
+  const controller = new AbortController();
+  const rows = Array.from({ length: 5 }, (_, i) => ({ id: i + 1 }));
+  const pending = streamRead({}, "SELECT * FROM t", {
+    limit: 10,
+    mssql: streamingMssqlFactory({ rows, events }),
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(() => pending, /Request aborted/);
+  assert.deepEqual(eventNames(events), ["begin", "rollback"]);
 });

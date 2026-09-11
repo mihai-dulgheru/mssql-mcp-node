@@ -379,6 +379,36 @@ async function runTests() {
     `tc=${r.structuredContent.recordset[0].tc} borrowed=${mcpPool.borrowed}`
   );
 
+  // ── issue #8 follow-ups: begin() edge cases ──
+  const { streamRead } = require("../src/db/safety");
+  {
+    // Abort while begin() is in flight: streamRead is parked inside
+    // transaction.begin() (the driver defers the pool acquire to a later tick)
+    // when abort() runs. Must reject, must not run the query, must release.
+    const controller = new AbortController();
+    const pending = streamRead(mcpPool, "SELECT 1 AS x", {
+      limit: 1,
+      signal: controller.signal,
+    });
+    controller.abort();
+    let err = null;
+    try {
+      await pending;
+    } catch (e) {
+      err = e;
+    }
+    check(
+      "abort during begin() rejects with 'Request aborted'",
+      err !== null && /Request aborted/.test(err.message),
+      err ? err.message : "resolved instead of rejecting"
+    );
+    check(
+      "abort during begin() leaves no borrowed connection",
+      mcpPool.borrowed === 0,
+      `borrowed=${mcpPool.borrowed}`
+    );
+  }
+
   // ── execute_write_query ──
   let threw = false;
   try {

@@ -26,36 +26,41 @@ function writesEnabled(env = process.env) {
   return String(env.MSSQL_ENABLE_WRITES || "").toLowerCase() === "true";
 }
 
+function cancelQuietly(request) {
+  try {
+    request.cancel();
+  } catch {
+    // ignore
+  }
+}
+
 function attachAbort(request, signal) {
   if (!signal) return;
-  const cancel = () => {
-    try {
-      request.cancel();
-    } catch {
-      // ignore
-    }
-  };
-  if (signal.aborted) {
-    cancel();
-    return;
-  }
-  signal.addEventListener("abort", cancel, { once: true });
+  // The signal may have aborted while transaction.begin() was in flight. A
+  // cancel() issued before query() is dropped by the driver (Request._query
+  // resets `canceled`), so fail here instead - runRead's finally rolls back.
+  if (signal.aborted) throw new Error("Request aborted");
+  signal.addEventListener("abort", () => cancelQuietly(request), {
+    once: true,
+  });
 }
 
 /**
  * Best-effort rollback of the read wrapper transaction.
  *
  * EABORT means the server already rolled back (XACT_ABORT, severe error) and the
- * driver has released the connection - nothing to do. Any other failure (e.g. the
- * user's SQL contained an explicit COMMIT, or a request was still in progress) is
- * logged rather than swallowed: a rollback that fails for the wrong reason can
- * leave the connection borrowed from the pool forever (issue #8).
+ * driver has released the connection; ENOTBEGUN means begin() never acquired a
+ * connection. Neither holds anything - nothing to do. Any other failure (e.g.
+ * the user's SQL contained an explicit COMMIT, or a request was still in
+ * progress) is logged rather than swallowed: a rollback that fails for the
+ * wrong reason can leave the connection borrowed from the pool forever
+ * (issue #8).
  */
 async function rollbackQuietly(transaction) {
   try {
     await transaction.rollback();
   } catch (err) {
-    if (err?.code === "EABORT") return;
+    if (err?.code === "EABORT" || err?.code === "ENOTBEGUN") return;
     console.error(
       `[safety] rollback failed (${err?.code || "unknown"}): ${err?.message}`
     );
@@ -74,8 +79,10 @@ async function rollbackQuietly(transaction) {
 async function runRead(pool, fn, { mssql = sqlLib, signal } = {}) {
   if (signal?.aborted) throw new Error("Request aborted");
   const transaction = new mssql.Transaction(pool);
-  await transaction.begin(mssql.ISOLATION_LEVEL.READ_COMMITTED);
   try {
+    // Inside the try: if BEGIN TRAN fails after the pool handed out a
+    // connection, the driver keeps it acquired until rollback() releases it.
+    await transaction.begin(mssql.ISOLATION_LEVEL.READ_COMMITTED);
     const request = new mssql.Request(transaction);
     attachAbort(request, signal);
     return await fn(request);
@@ -94,7 +101,6 @@ async function runWrite(
       "writes are disabled. Set MSSQL_ENABLE_WRITES=true to enable execute_write_query."
     );
   }
-  if (signal?.aborted) throw new Error("Request aborted");
   const request = new mssql.Request(pool);
   attachAbort(request, signal);
   return fn(request);
@@ -118,67 +124,61 @@ async function runWrite(
  * settle on `done` - settling on `error` made the rollback in `finally` fail
  * with EREQINPROG and leaked the transaction + pool connection (issue #8).
  */
-async function streamRead(
+function streamRead(
   pool,
   query,
   { offset = 0, limit = 100, mssql = sqlLib, signal } = {}
 ) {
-  if (signal?.aborted) throw new Error("Request aborted");
-  const transaction = new mssql.Transaction(pool);
-  await transaction.begin(mssql.ISOLATION_LEVEL.READ_COMMITTED);
-  try {
-    const request = new mssql.Request(transaction);
-    request.stream = true;
-    attachAbort(request, signal);
+  return runRead(
+    pool,
+    (request) =>
+      new Promise((resolve, reject) => {
+        request.stream = true;
+        const rows = [];
+        let totalSeen = 0;
+        let truncated = false;
+        let canceled = false;
+        let firstError = null;
 
-    return await new Promise((resolve, reject) => {
-      const rows = [];
-      let totalSeen = 0;
-      let truncated = false;
-      let canceled = false;
-      let firstError = null;
-
-      request.on("row", (row) => {
-        totalSeen++;
-        if (totalSeen > offset && rows.length < limit) {
-          rows.push(row);
-        }
-        if (totalSeen > offset + limit && !canceled) {
-          truncated = true;
-          canceled = true;
-          try {
-            request.cancel();
-          } catch {
-            // ignore
+        request.on("row", (row) => {
+          totalSeen++;
+          if (totalSeen > offset && rows.length < limit) {
+            rows.push(row);
           }
-        }
-      });
-      request.on("error", (err) => {
-        // Errors caused by our own truncation cancel are expected: ECANCEL once
-        // the server acks the attention, or ETIMEOUT if it never does (tedious
-        // then drops the connection; rollback logs EINVALIDSTATE). A request
-        // timeout cannot surface here - tedious clears that timer on the first
-        // packet, and `canceled` is only set from a row event. Any other error
-        // (SQL error, abort-signal cancel) fails the read.
-        if (canceled && (err?.code === "ECANCEL" || err?.code === "ETIMEOUT")) {
-          return;
-        }
-        if (!firstError) firstError = err;
-      });
-      request.on("done", () => {
-        if (firstError) reject(firstError);
-        else resolve({ rows, totalSeen, truncated });
-      });
+          if (totalSeen > offset + limit && !canceled) {
+            truncated = true;
+            canceled = true;
+            cancelQuietly(request);
+          }
+        });
+        request.on("error", (err) => {
+          // Errors caused by our own truncation cancel are expected: ECANCEL
+          // once the server acks the attention, or ETIMEOUT if it never does
+          // (tedious then drops the connection; rollback logs EINVALIDSTATE).
+          // A request timeout cannot surface here - tedious clears that timer
+          // on the first packet, and `canceled` is only set from a row event.
+          // Any other error (SQL error, abort-signal cancel) fails the read.
+          if (
+            canceled &&
+            (err?.code === "ECANCEL" || err?.code === "ETIMEOUT")
+          ) {
+            return;
+          }
+          if (!firstError) firstError = err;
+        });
+        request.on("done", () => {
+          if (firstError) reject(firstError);
+          else resolve({ rows, totalSeen, truncated });
+        });
 
-      try {
-        request.query(query);
-      } catch (err) {
-        reject(err);
-      }
-    });
-  } finally {
-    await rollbackQuietly(transaction);
-  }
+        try {
+          request.query(query);
+        } catch (err) {
+          reject(err);
+        }
+      }),
+    { mssql, signal }
+  );
 }
 
 module.exports = {
