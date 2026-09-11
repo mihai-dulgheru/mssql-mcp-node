@@ -20,6 +20,7 @@
  */
 const { spawn } = require("node:child_process");
 const http = require("node:http");
+const pkg = require("../package.json");
 
 const PORT = 3088;
 let serverProc;
@@ -175,8 +176,8 @@ async function phase1_writesDisabled() {
     )
   );
   log(
-    "serverInfo.version is 3.0.0",
-    init.body.result?.serverInfo?.version === "3.0.0"
+    `serverInfo.version is ${pkg.version}`,
+    init.body.result?.serverInfo?.version === pkg.version
   );
 
   // tools/list
